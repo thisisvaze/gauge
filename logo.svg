@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <path d="M320 64h384c180 0 256 76 256 256v384c0 180-76 256-256 256H320C140 960 64 884 64 704V320C64 140 140 64 320 64Z" fill="#fcfcfb" stroke="#e8e7e2" stroke-width="8"/>
+  <g fill="#e8e7e2">
+    <rect x="296" y="240" width="160" height="544" rx="52"/>
+    <rect x="568" y="240" width="160" height="544" rx="52"/>
+  </g>
+  <rect x="296" y="400" width="160" height="384" rx="52" fill="#087d6b"/>
+  <rect x="568" y="528" width="160" height="256" rx="52" fill="#ba6038"/>
+</svg>
+<!-- GitHub rendering not checked. -->
