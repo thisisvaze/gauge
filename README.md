@@ -1,4 +1,4 @@
-<p align="center"><img src="logo.svg" width="128" alt="gauge logo"></p>
+<p align="center"><img src="docs/logo.svg" width="128" alt="gauge logo"></p>
 
 # gauge
 
@@ -6,8 +6,8 @@ A small macOS menu bar app that shows how much memory and disk you're using, and
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="gauge-dark.png">
-    <img src="gauge-light.png" width="640" alt="gauge open from the menu bar: 21 GB of 32 GB memory used, 241 GB of 995 GB disk free, and the top apps by memory, with the pointer on Google Chrome's Quit button">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/gauge-dark.png">
+    <img src="docs/gauge-light.png" width="640" alt="gauge open from the menu bar: 21 GB of 32 GB memory used, 241 GB of 995 GB disk free, and the top apps by memory, with the pointer on Google Chrome's Quit button">
   </picture>
 </p>
 
@@ -47,7 +47,11 @@ Measured on an M5 Pro with macOS 27.2, gauge sitting in the menu bar:
 
 ## Install
 
-Runs on macOS 14 or later. Building needs Xcode 26 (Swift 6.2).
+Download [gauge.zip](https://github.com/thisisvaze/gauge/releases/latest/download/gauge.zip), unzip it and drag gauge.app to Applications. Runs on macOS 14 or later, Apple silicon and Intel.
+
+### Build it yourself
+
+Needs Xcode 26 (Swift 6.2).
 
 ```sh
 git clone https://github.com/thisisvaze/gauge.git
@@ -55,9 +59,11 @@ cd gauge
 ./bundle.sh install
 ```
 
-That builds a release, copies gauge.app to /Applications and opens it. `./bundle.sh` on its own just builds `build/gauge.app`.
+That builds a release, copies gauge.app to /Applications and opens it. `./bundle.sh` on its own just builds `build/gauge.app`, and `./bundle.sh release` makes the universal, notarized `build/gauge.zip` (set `NOTARY_PROFILE` first, see the top of the script).
 
-For a complete storage scan, give gauge Full Disk Access in System Settings > Privacy & Security (the app has a button that takes you there). If you have an Apple Development certificate, `bundle.sh` signs with it so the permission sticks across rebuilds. Without one it signs ad hoc, and you may have to allow it again after each build.
+### Full Disk Access
+
+For a complete storage scan, give gauge Full Disk Access in System Settings > Privacy & Security (the app has a button that takes you there). When you build it yourself, `bundle.sh` signs with your Apple Development certificate if you have one, so the permission sticks across rebuilds. Without one it signs ad hoc, and you may have to allow it again after each build.
 
 ## Tests
 
