@@ -85,3 +85,17 @@ import Testing
     #expect(big.map { ($0.path as NSString).lastPathComponent } == ["trip.mov", "Unity.app", "clips", "Xcode.app", "Hub.app", "x.dmg"])
     #expect(big.map(\.kind) == [.file, .app, .folder, .app, .app, .file])
 }
+
+@Test func `quit escalates to SIGKILL when a process ignores SIGTERM`() async throws {
+    let p = Process()
+    p.executableURL = URL(fileURLWithPath: "/bin/sh")
+    p.arguments = ["-c", "trap '' TERM; exec /bin/sleep 30"]  // sleep inherits the ignored SIGTERM
+    try p.run()
+    try await Task.sleep(for: .milliseconds(200))
+    stop(nil, [p.processIdentifier], grace: .milliseconds(500))
+    try await Task.sleep(for: .milliseconds(250))
+    #expect(p.isRunning)  // shrugged off the polite SIGTERM
+    try await Task.sleep(for: .seconds(1))
+    #expect(!p.isRunning && p.terminationStatus == SIGKILL)
+    #expect(started(p.processIdentifier) == 0)
+}

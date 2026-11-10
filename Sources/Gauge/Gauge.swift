@@ -61,6 +61,35 @@ func arguments(_ pid: pid_t) -> [String] {
     return buf[4..<size].split(separator: 0).dropFirst().prefix(argc).map { String(decoding: $0, as: UTF8.self) }
 }
 
+/// When a process started (µs), 0 if it's gone: tells a pid apart from a newer process that reused the number.
+func started(_ pid: pid_t) -> UInt64 {
+    var info = proc_bsdinfo()
+    guard proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, Int32(MemoryLayout<proc_bsdinfo>.size)) > 0 else { return 0 }
+    return info.pbi_start_tvsec * 1_000_000 + info.pbi_start_tvusec
+}
+
+/// A process's on-screen windows. Needs no permission (only window titles do).
+func windows(_ pid: pid_t) -> Set<Int> {
+    let all = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as? [[String: Any]] ?? []
+    return Set(all.filter { $0[kCGWindowOwnerPID as String] as? pid_t == pid }.compactMap { $0[kCGWindowNumber as String] as? Int })
+}
+
+/// Quit politely, then force quit whatever is still running `grace` later: stuck apps and processes that ignore SIGTERM.
+/// An app that opened a window meanwhile is asking you something (Save changes?), so it's left to you.
+func stop(_ app: NSRunningApplication?, _ pids: [pid_t], grace: Duration = .seconds(10)) {
+    let starts = pids.map { ($0, started($0)) }
+    let shown = app.map { windows($0.processIdentifier) } ?? []
+    if let app { app.terminate() } else { pids.forEach { kill($0, SIGTERM) } }
+    Task {
+        try? await Task.sleep(for: grace)
+        if let app {
+            if !app.isTerminated && windows(app.processIdentifier).isSubset(of: shown) { app.forceTerminate() }
+        } else {
+            for (pid, t) in starts where t != 0 && started(pid) == t { kill(pid, SIGKILL) }
+        }
+    }
+}
+
 /// Working directory: tells two `claude` or `node` processes apart.
 func cwd(_ pid: pid_t) -> String {
     var info = proc_vnodepathinfo()
@@ -275,6 +304,7 @@ struct AppRow: Identifiable {
 }
 
 /// Dock apps quit gracefully (they can still ask to save); third-party background processes get SIGTERM; macOS's own get nothing.
+/// Anything still running 10 s after Quit gets force quit (see `stop`).
 func appRows(limit: Int) -> [AppRow] {
     let apps = Dictionary(NSWorkspace.shared.runningApplications.map { ($0.processIdentifier, $0) }) { a, _ in a }
     return groups(myProcesses(), owner: { responsible?($0) }).prefix(limit).map { g in
@@ -286,7 +316,8 @@ func appRows(limit: Int) -> [AppRow] {
         let name = args.first.map { ($0 as NSString).lastPathComponent } ?? g.name
         let detail = g.owner.map { args.joined(separator: " ") + "\nin " + (cwd($0) as NSString).abbreviatingWithTildeInPath } ?? "\(g.members.count) processes"
         let quit: (Bool) -> Void = { force in
-            if let app { _ = force ? app.forceTerminate() : app.terminate() } else { pids.forEach { kill($0, force ? SIGKILL : SIGTERM) } }
+            guard force else { return stop(app, pids) }
+            if let app { app.forceTerminate() } else { pids.forEach { kill($0, SIGKILL) } }
         }
         return AppRow(id: g.owner.map { "\($0)" } ?? g.name, name: name, bytes: g.bytes,
                       detail: safe ? detail : "Part of macOS, so Gauge won’t quit it", quit: safe ? quit : nil, icon: app?.icon)
