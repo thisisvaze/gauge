@@ -333,7 +333,7 @@ func appRows(limit: Int) -> [AppRow] {
             if let app { app.forceTerminate() } else { pids.forEach { kill($0, SIGKILL) } }
         }
         return AppRow(id: g.owner.map { "\($0)" } ?? g.name, name: name, bytes: g.bytes,
-                      detail: safe ? detail : "Part of macOS, so Gauge won’t quit it", quit: safe ? quit : nil, icon: app?.icon,
+                      detail: safe ? detail : "Part of macOS, so gauge won’t quit it", quit: safe ? quit : nil, icon: app?.icon,
                       open: dock.map { a in { switchTo(a) } })
     }
 }
@@ -474,14 +474,14 @@ final class Monitor: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         if NSApp.currentEvent?.type == .rightMouseUp {
             popover.performClose(nil)
             let menu = NSMenu()
-            for (title, action) in [("Open Gauge", #selector(showDashboard)), ("Activity Monitor", #selector(openActivityMonitor)),
+            for (title, action) in [("Open gauge", #selector(showDashboard)), ("Activity Monitor", #selector(openActivityMonitor)),
                                     ("Storage Settings", #selector(openStorageSettings)), ("Open at Login", #selector(toggleLogin))] {
                 let item = menu.addItem(withTitle: title, action: action, keyEquivalent: "")
                 item.target = self
                 if action == #selector(toggleLogin) { item.state = SMAppService.mainApp.status == .enabled ? .on : .off }
             }
             menu.addItem(.separator())
-            let quit = menu.addItem(withTitle: "Quit Gauge", action: #selector(quitGauge), keyEquivalent: "q")
+            let quit = menu.addItem(withTitle: "Quit gauge", action: #selector(quitGauge), keyEquivalent: "q")
             quit.target = self
             status.menu = menu
             status.button?.performClick(nil)
@@ -516,7 +516,7 @@ final class Monitor: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         NSApp.activate()
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         live = Timer.scheduledTimer(timeInterval: 2, target: self, selector: #selector(refresh), userInfo: nil, repeats: true)
-        // .transient only closes on outside clicks while Gauge is the active app, which macOS doesn't always grant a menu bar app.
+        // .transient only closes on outside clicks while gauge is the active app, which macOS doesn't always grant a menu bar app.
         // A global monitor sees clicks in every other app and on the desktop (mouse monitors need no permission).
         outside = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] _ in
             MainActor.assumeIsolated { self?.popover.performClose(nil) }
@@ -532,7 +532,7 @@ final class Monitor: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         popover.contentViewController = nil  // free the views while closed
     }
 
-    /// Opening Gauge again (Spotlight, Raycast, `open -a Gauge`) shows the dashboard, even if the icon is hidden.
+    /// Opening gauge again (Spotlight, Raycast, `open -a gauge`) shows the dashboard, even if the icon is hidden.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
         if !popover.isShown { show() }
         return false

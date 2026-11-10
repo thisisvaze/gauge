@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleIdentifier</key><string>dev.vaze.Gauge</string>
-    <key>CFBundleName</key><string>Gauge</string>
+    <key>CFBundleName</key><string>gauge</string>
     <key>CFBundleExecutable</key><string>Gauge</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>1.0</string>
