@@ -99,3 +99,10 @@ import Testing
     #expect(!p.isRunning && p.terminationStatus == SIGKILL)
     #expect(started(p.processIdentifier) == 0)
 }
+
+@Test func `macOS's own processes drop their com.apple prefix`() {
+    #expect(display("com.apple.CoreSimulator.CoreSimulatorService") == "CoreSimulatorService")
+    #expect(display("com.apple.WebKit.WebContent") == "WebContent")
+    #expect(display("com.docker.backend") == "com.docker.backend")
+    #expect(display("python3.12") == "python3.12")
+}

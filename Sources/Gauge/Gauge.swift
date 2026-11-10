@@ -301,6 +301,17 @@ struct AppRow: Identifiable {
     let id: String, name: String, bytes: Int64, detail: String
     let quit: ((_ force: Bool) -> Void)?  // nil: part of macOS, never offered
     let icon: NSImage?
+    var open: (() -> Void)? = nil  // nil: no app to switch to (command line tools, background processes)
+}
+
+/// macOS's own background processes go by bundle ID ("com.apple.CoreSimulator.CoreSimulatorService"): the last part reads fine on its own.
+func display(_ name: String) -> String {
+    name.hasPrefix("com.apple.") ? String(name.split(separator: ".").last ?? Substring(name)) : name
+}
+
+/// Like clicking its Dock icon: brings the app forward, with a window if it had none open.
+func switchTo(_ app: NSRunningApplication) {
+    if let url = app.bundleURL { NSWorkspace.shared.openApplication(at: url, configuration: .init(), completionHandler: nil) } else { _ = app.activate() }
 }
 
 /// Dock apps quit gracefully (they can still ask to save); third-party background processes get SIGTERM; macOS's own get nothing.
@@ -313,14 +324,17 @@ func appRows(limit: Int) -> [AppRow] {
         let pids = g.members.filter { !isSystem($0.path) }.map(\.pid)
         let safe = (app.map { $0.activationPolicy == .regular && !protected.contains($0.bundleIdentifier ?? "") } ?? false) || !pids.isEmpty
         let args = g.owner.map(arguments) ?? []  // argv[0] names it "claude", not its versioned binary "2.1.310"
-        let name = args.first.map { ($0 as NSString).lastPathComponent } ?? g.name
-        let detail = g.owner.map { args.joined(separator: " ") + "\nin " + (cwd($0) as NSString).abbreviatingWithTildeInPath } ?? "\(g.members.count) processes"
+        let name = display(args.first.map { ($0 as NSString).lastPathComponent } ?? g.name)
+        let dock = app?.activationPolicy == .regular ? app : nil
+        let detail = g.owner.map { args.joined(separator: " ") + "\nin " + (cwd($0) as NSString).abbreviatingWithTildeInPath }
+            ?? ("\(g.members.count) processes" + (dock == nil ? "" : " · click to switch to it"))
         let quit: (Bool) -> Void = { force in
             guard force else { return stop(app, pids) }
             if let app { app.forceTerminate() } else { pids.forEach { kill($0, SIGKILL) } }
         }
         return AppRow(id: g.owner.map { "\($0)" } ?? g.name, name: name, bytes: g.bytes,
-                      detail: safe ? detail : "Part of macOS, so Gauge won’t quit it", quit: safe ? quit : nil, icon: app?.icon)
+                      detail: safe ? detail : "Part of macOS, so Gauge won’t quit it", quit: safe ? quit : nil, icon: app?.icon,
+                      open: dock.map { a in { switchTo(a) } })
     }
 }
 
@@ -329,6 +343,7 @@ final class Model {
     var mem = memory()
     var space = disk()
     var rows: [AppRow] = []
+    var quitting: Set<String> = []  // row ids that read "Quitting…"
     var big: [Big] = []
     var tree: Tree?
     var scannedAt: Date?
@@ -363,6 +378,19 @@ final class Model {
     }
 
     func refresh() { mem = memory(); rows = appRows(limit: 8) }
+
+    /// The row reads "Quitting…" until it drops out. Past the force-quit grace (see `stop`) it's either gone or the app is asking you something.
+    func quit(_ row: AppRow, force: Bool) {
+        row.quit?(force)
+        quitting.insert(row.id)
+        Task {
+            try? await Task.sleep(for: .seconds(1.5))
+            refresh()
+            try? await Task.sleep(for: .seconds(10))
+            quitting.remove(row.id)
+            refresh()
+        }
+    }
     func refreshDisk() { space = disk(); fullDiskAccess = hasFullDiskAccess() }
 
     func scan() {
@@ -425,6 +453,12 @@ final class Monitor: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         popover.delegate = self
         tick()
         Timer.scheduledTimer(timeInterval: 5, target: self, selector: #selector(tick), userInfo: nil, repeats: true).tolerance = 2
+        NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(appActivated), name: NSWorkspace.didActivateApplicationNotification, object: nil)
+    }
+
+    /// Switching to another app (from a row, ⌘Tab or the Dock) closes the window.
+    @objc func appActivated(_ note: Notification) {
+        if note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication != .current { popover.performClose(nil) }
     }
 
     @objc func tick() {

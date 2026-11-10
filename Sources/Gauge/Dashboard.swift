@@ -180,6 +180,7 @@ struct AppRowView: View {
     @FocusState private var focused: Bool
 
     var body: some View {
+        let quitting = model.quitting.contains(row.id)
         HStack(spacing: 9) {
             if let icon = row.icon {
                 Image(nsImage: icon).resizable().frame(width: 23, height: 23)
@@ -189,13 +190,17 @@ struct AppRowView: View {
                     .frame(width: 23, height: 23).background(Palette.track, in: RoundedRectangle(cornerRadius: 5))
             }
             Text(row.name).lineLimit(1).truncationMode(.middle)
-                .foregroundStyle(row.quit == nil ? Palette.ink3 : Palette.ink)
+                .foregroundStyle(row.quit == nil || quitting ? Palette.ink3 : Palette.ink)
             Spacer(minLength: 6)
             ZStack(alignment: .trailing) {
-                Text(bytes(row.bytes, .memory)).monospacedDigit().foregroundStyle(Palette.ink2)
-                    .opacity((hover || focused) && row.quit != nil ? 0 : 1)
-                if hover || focused, let quit = row.quit {
-                    Button("Quit") { quit(false); refreshSoon() }.buttonStyle(.bordered).controlSize(.small)
+                if quitting {
+                    Text("Quitting…").foregroundStyle(Palette.ink3)
+                } else {
+                    Text(bytes(row.bytes, .memory)).monospacedDigit().foregroundStyle(Palette.ink2)
+                        .opacity((hover || focused) && row.quit != nil ? 0 : 1)
+                    if hover || focused, row.quit != nil {
+                        Button("Quit") { model.quit(row, force: false) }.buttonStyle(.bordered).controlSize(.small)
+                    }
                 }
             }
             .frame(width: 62, alignment: .trailing)
@@ -203,26 +208,27 @@ struct AppRowView: View {
         .font(.system(size: 12)).frame(height: 36).padding(.horizontal, 8)
         .background(RoundedRectangle(cornerRadius: 6).fill(hover || focused ? Palette.hover : .clear))
         .contentShape(Rectangle()).focusable(interactions: .activate).focused($focused)  // keyboard focus only: a click shouldn't select the row
+        .onTapGesture { row.open?() }
         .onHover { hover = $0 }.help(row.detail)
         .contextMenu {
-            if let quit = row.quit {
-                Button("Quit") { quit(false); refreshSoon() }
-                Button("Force Quit") { quit(true); refreshSoon() }
-                Divider()
+            if let open = row.open { Button("Switch to \(row.name)") { open() } }
+            if row.quit != nil {
+                Button("Quit") { model.quit(row, force: false) }
+                Button("Force Quit") { model.quit(row, force: true) }
             }
+            if row.open != nil || row.quit != nil { Divider() }
             Button("Open Activity Monitor") { NSWorkspace.shared.open(activityMonitor) }
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(row.name), \(bytes(row.bytes, .memory))")
+        .accessibilityLabel("\(row.name), \(quitting ? "quitting" : bytes(row.bytes, .memory))")
         .accessibilityActions {
-            if let quit = row.quit {
-                Button("Quit") { quit(false); refreshSoon() }
-                Button("Force Quit") { quit(true); refreshSoon() }
+            if let open = row.open { Button("Switch to \(row.name)") { open() } }
+            if row.quit != nil {
+                Button("Quit") { model.quit(row, force: false) }
+                Button("Force Quit") { model.quit(row, force: true) }
             }
         }
     }
-
-    func refreshSoon() { Task { try? await Task.sleep(for: .seconds(1.5)); model.refresh() } }
 }
 
 struct Explorer: View {

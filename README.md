@@ -18,7 +18,7 @@ The icon is two bars - memory on the left, disk on the right. Memory turns orang
 - Used out of total, split into apps, wired and compressed, plus the pressure level
 - Your top apps by memory. Helpers count toward their app and XPC services toward the app they work for, so Safari's tabs show up under Safari
 - Command line tools like `node` or `claude` get their own row, with the command and the folder they're running in
-- Hover a row to quit it, or right-click it to force quit. If it's still running 10 seconds after Quit, Gauge force quits it - unless the app opened a window to ask you something, like Save changes?
+- Click an app to switch to it. Hover a row to quit it, or right-click it to force quit. If it's still running 10 seconds after Quit, Gauge force quits it - unless the app opened a window to ask you something, like Save changes?
 - macOS's own processes are never offered
 
 ## Storage
@@ -38,7 +38,7 @@ Measured on an M5 Pro with macOS 27.2, Gauge sitting in the menu bar:
 | Memory | 39 MB |
 | CPU | 0.15% on average (0.18 s of CPU time in 2 minutes) |
 | App size | 892 KB |
-| Code | 834 lines of Swift, no dependencies |
+| Code | 874 lines of Swift, no dependencies |
 
 - Memory and per-app numbers come straight from the kernel, no `ps` or `top` running in the background
 - The icon updates every 5 seconds with a bit of slack so macOS can group the wakeups with others, and free disk space is only checked once a minute
