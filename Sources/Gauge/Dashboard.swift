@@ -202,7 +202,7 @@ struct AppRowView: View {
         }
         .font(.system(size: 12)).frame(height: 36).padding(.horizontal, 8)
         .background(RoundedRectangle(cornerRadius: 6).fill(hover || focused ? Palette.hover : .clear))
-        .contentShape(Rectangle()).focusable().focused($focused)
+        .contentShape(Rectangle()).focusable(interactions: .activate).focused($focused)  // keyboard focus only: a click shouldn't select the row
         .onHover { hover = $0 }.help(row.detail)
         .contextMenu {
             if let quit = row.quit {
@@ -304,7 +304,7 @@ struct BigRow: View {
         }
         .font(.system(size: 12)).frame(height: 44).padding(.horizontal, 8)
         .background(RoundedRectangle(cornerRadius: 6).fill(hover || focused || confirmingTrash ? Palette.hover : .clear))
-        .contentShape(Rectangle()).focusable().focused($focused)
+        .contentShape(Rectangle()).focusable(interactions: .activate).focused($focused)  // keyboard focus only: a click shouldn't select the row
         .onHover { hover = $0 }
         .help((String(item.path.dropFirst(dataRoot.count)) as NSString).abbreviatingWithTildeInPath
               + (item.date.map { "\n" + (item.opened ? "Last opened " : "Last changed ") + $0.formatted(date: .abbreviated, time: .omitted) } ?? ""))
