@@ -7,7 +7,7 @@ A small macOS menu bar app that shows how much memory and disk you're using, and
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="screenshot-dark.png">
-    <img src="screenshot-light.png" width="400" alt="Gauge's window: 21 GB of 32 GB memory used, 241 GB of 995 GB disk free, and the top apps by memory, led by Google Chrome at 3.2 GB">
+    <img src="screenshot-light.png" width="400" alt="Gauge's window: 21 GB of 32 GB memory used, 241 GB of 995 GB disk free, and the top apps by memory, with the pointer on Google Chrome's Quit button">
   </picture>
 </p>
 
@@ -18,7 +18,7 @@ The icon is two bars - memory on the left, disk on the right. Memory turns orang
 - Used out of total, split into apps, wired and compressed, plus the pressure level
 - Your top apps by memory. Helpers count toward their app and XPC services toward the app they work for, so Safari's tabs show up under Safari
 - Command line tools like `node` or `claude` get their own row, with the command and the folder they're running in
-- Quit or force quit from the list. macOS's own processes are never offered
+- Hover a row to quit it, or right-click it to force quit. macOS's own processes are never offered
 
 ## Storage
 
