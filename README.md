@@ -6,8 +6,8 @@ A small macOS menu bar app that shows how much memory and disk you're using, and
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="screenshot-dark.png">
-    <img src="screenshot-light.png" width="400" alt="Gauge's window: 21 GB of 32 GB memory used, 241 GB of 995 GB disk free, and the top apps by memory, with the pointer on Google Chrome's Quit button">
+    <source media="(prefers-color-scheme: dark)" srcset="gauge-dark.png">
+    <img src="gauge-light.png" width="640" alt="Gauge open from the menu bar: 21 GB of 32 GB memory used, 241 GB of 995 GB disk free, and the top apps by memory, with the pointer on Google Chrome's Quit button">
   </picture>
 </p>
 
