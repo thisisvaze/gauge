@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>gauge - memory and disk in your menu bar</title>
+<meta name="description" content="A small macOS menu bar app that shows how much memory and disk you’re using, and what’s taking it up.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="logo.svg" type="image/svg+xml">
+<link rel="canonical" href="https://thisisvaze.github.io/gauge/">
+
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://thisisvaze.github.io/gauge/">
+<meta property="og:title" content="gauge">
+<meta property="og:description" content="A small macOS menu bar app that shows how much memory and disk you’re using, and what’s taking it up.">
+<meta property="og:image" content="https://thisisvaze.github.io/gauge/social-preview.jpg">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="gauge">
+<meta name="twitter:description" content="A small macOS menu bar app that shows how much memory and disk you’re using, and what’s taking it up.">
+<meta name="twitter:image" content="https://thisisvaze.github.io/gauge/social-preview.jpg">
+
+<link rel="stylesheet" href="tokens.css">
+<style>
+/* Hallmark · genre: modern-minimal · macrostructure: Split Studio · theme: project palette (native warm gray, graphite controls, teal/terracotta data hues) · enrichment: none (real screenshot) · nav: N9 · footer: Ft2
+ * tone: quiet utility · anchor hue: 90 (warm gray) · motion: button press + hover colour only
+ * Hallmark · pre-emit critique: P4 H5 E5 S5 R5 V4
+ * contrast: pass (40–41) · nav: N9 · footer: Ft2 · slop: pass (42–45) · honest: pass (46) · chrome: pass (47) · tokens: pass (48) · responsive: pass (49) · icons: pass (30) · mobile: pass (34, 49, 50–57)
+ * deliberate: system font stack kept by request (gate 1 / typography bans); links carry no :disabled state (gate 26, an <a> is never disabled); Split Studio cross-fade reveal skipped - the page doesn't move
+ */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { overflow-x: clip; }
+body {
+  margin: 0;
+  background: var(--color-page);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+img { display: block; max-width: 100%; height: auto; }
+p, li, figcaption { text-wrap: pretty; }
+h1, h2 { text-wrap: balance; }
+code { font-family: var(--font-mono); font-size: .9em; }
+a { color: inherit; text-underline-offset: 2px; text-decoration-thickness: 1px; }
+a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 3px; border-radius: var(--radius-sm); }
+
+.wrap {
+  max-width: var(--page-max);
+  margin-inline: auto;
+  padding-inline: max(var(--page-gutter), env(safe-area-inset-left)) max(var(--page-gutter), env(safe-area-inset-right));
+}
+
+/* N9 · edge-aligned: wordmark left, one link right, nothing between */
+.nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-lg);
+  padding-block: var(--space-lg);
+}
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-weight: 700;
+  letter-spacing: -.01em;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.wordmark img { width: 28px; height: 28px; }
+.nav-link {
+  color: var(--color-secondary);
+  font-size: var(--text-sm);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color var(--dur-short) var(--ease-out);
+}
+.nav-link:hover { color: var(--color-ink); text-decoration: underline; }
+
+/* Split rows - text one side, proof the other, direction alternates */
+.split {
+  display: grid;
+  gap: var(--space-2xl);
+  align-items: center;
+}
+.hero { padding-block: var(--space-2xl) var(--space-3xl); }
+.hero-text { min-width: 0; }
+h1, h2 { font-family: var(--font-display); font-style: normal; margin: 0; overflow-wrap: anywhere; min-width: 0; }
+h1 {
+  font-size: var(--text-display);
+  font-weight: 700;
+  line-height: 1.08;
+  letter-spacing: -.03em;
+  max-width: 14ch;
+}
+.lede {
+  margin: var(--space-xl) 0 0;
+  font-size: var(--text-md);
+  line-height: 1.45;
+  color: var(--color-secondary);
+  max-width: 45ch;
+}
+.get { margin-top: var(--space-2xl); }
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 0 var(--space-2xl);
+  border-radius: var(--radius-pill);
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background-color var(--dur-short) var(--ease-out), transform var(--dur-micro) var(--ease-out);
+}
+.btn:hover { background: var(--color-accent-hover); }
+.btn:active { transform: translateY(1px); }
+.btn:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 3px; border-radius: var(--radius-pill); }
+.get p {
+  margin: var(--space-lg) 0 0;
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+  max-width: 45ch;
+}
+.get p + p { margin-top: var(--space-xs); }
+.shot { margin: 0; min-width: 0; }
+.shot img { width: 640px; }
+
+/* Features - the icon on one side, what it shows on the other */
+.features { padding-block: var(--space-4xl) 0; align-items: start; }
+.icon-note { margin: 0; min-width: 0; }
+.icon-note img { width: 96px; height: 96px; }
+.icon-note figcaption {
+  margin-top: var(--space-xl);
+  color: var(--color-secondary);
+  max-width: 45ch;
+}
+.lists { display: grid; gap: var(--space-3xl); min-width: 0; }
+h2 { font-size: var(--text-lg); font-weight: 700; line-height: 1.2; letter-spacing: -.02em; }
+.mark { display: flex; align-items: center; gap: var(--space-md); }
+.mark::before {
+  content: "";
+  width: 7px;
+  height: .9em;
+  border-radius: var(--radius-pill);
+  background: var(--mark);
+}
+.mark-memory { --mark: var(--color-memory-apps); }
+.mark-storage { --mark: var(--color-storage); }
+ul {
+  margin: var(--space-lg) 0 0;
+  padding-left: var(--space-xl);
+  display: grid;
+  gap: var(--space-sm);
+  max-width: 62ch;
+}
+li::marker { color: var(--color-muted); }
+
+/* Footprint - numbers set like the app's own rows */
+.light { padding-block: var(--space-5xl) var(--space-4xl); align-items: start; }
+.light-text { min-width: 0; }
+.light-text p { margin: var(--space-md) 0 0; color: var(--color-secondary); max-width: 46ch; }
+.numbers {
+  margin: 0;
+  min-width: 0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-lg);
+  padding: var(--space-sm) var(--space-xl);
+}
+.numbers div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-lg);
+  padding-block: var(--space-lg);
+}
+.numbers div + div { border-top: 1px solid var(--color-line); }
+.numbers dt { color: var(--color-secondary); }
+.numbers dd {
+  margin: 0;
+  text-align: right;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.numbers small {
+  display: block;
+  font-size: var(--text-sm);
+  font-weight: 400;
+  color: var(--color-muted);
+}
+
+/* Ft2 · one line, hairline above */
+.foot {
+  border-top: 1px solid var(--color-line);
+  padding-block: var(--space-xl) max(var(--space-xl), env(safe-area-inset-bottom));
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm) var(--space-lg);
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+}
+.foot a { white-space: nowrap; }
+.foot a:hover { color: var(--color-ink); }
+
+@media (min-width: 60rem) {
+  .hero { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: var(--space-4xl); padding-block: var(--space-3xl) var(--space-4xl); }
+  .features { grid-template-columns: minmax(0, 4fr) minmax(0, 8fr); gap: var(--space-4xl); }
+  .icon-note img { width: 128px; height: 128px; }
+  .lists { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-2xl); }
+  .light { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: var(--space-4xl); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0ms !important; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="nav">
+    <a class="wordmark" href="./"><img src="logo.svg" alt="" width="28" height="28">gauge</a>
+    <a class="nav-link" href="https://github.com/thisisvaze/gauge">Source on GitHub</a>
+  </header>
+
+  <main>
+    <section class="split hero">
+      <div class="hero-text">
+        <h1>See what’s eating your memory</h1>
+        <p class="lede">A small macOS menu bar app that shows how much memory and disk you’re using, and what’s taking it up.</p>
+        <div class="get">
+          <a class="btn" href="https://github.com/thisisvaze/gauge/releases/latest/download/gauge.zip">Download</a>
+          <p>macOS&nbsp;14 or later, Apple silicon and Intel. Free and open source (MIT).</p>
+          <p>Unzip it and drag gauge.app to Applications.</p>
+        </div>
+      </div>
+      <figure class="shot">
+        <picture>
+          <source srcset="gauge-dark.png" media="(prefers-color-scheme: dark)">
+          <img src="gauge-light.png" width="640" height="568" fetchpriority="high" alt="gauge open from the menu bar: 21 GB of 32 GB memory used, 241 GB of 995 GB disk free, and the top apps by memory, with the pointer on Google Chrome’s Quit button">
+        </picture>
+      </figure>
+    </section>
+
+    <section class="split features" aria-label="What it shows">
+      <figure class="icon-note">
+        <img src="logo.svg" alt="" width="128" height="128" loading="lazy">
+        <figcaption>The icon is two bars - memory on the left, disk on the right. Memory turns orange or red when macOS reports memory pressure, disk turns red once it’s over 90% full.</figcaption>
+      </figure>
+      <div class="lists">
+        <div>
+          <h2 class="mark mark-memory">Memory</h2>
+          <ul>
+            <li>Used out of total, split into apps, wired and compressed, plus the pressure level</li>
+            <li>Your top apps by memory. Helpers count toward their app, so Safari’s tabs show up under Safari</li>
+            <li>Command line tools like <code>node</code> or <code>claude</code> get their own row, with the command and the folder they’re running in</li>
+            <li>Click an app to switch to it. Hover a row to quit it, or right-click it to force quit - macOS’s own processes are never offered</li>
+          </ul>
+        </div>
+        <div>
+          <h2 class="mark mark-storage">Storage</h2>
+          <ul>
+            <li>Free space out of total</li>
+            <li>The biggest apps, files and folders (500&nbsp;MB and up) in Applications and your home folder, with when you last opened them</li>
+            <li>Show in Finder or Move to Trash, and empty the Trash from there</li>
+            <li>Full Disk Access is optional, you only need it for a complete scan</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="split light">
+      <div class="light-text">
+        <h2>How light it is</h2>
+        <p>Measured on an M5&nbsp;Pro with macOS&nbsp;27.2, gauge sitting in the menu bar.</p>
+        <ul>
+          <li>Memory and per-app numbers come straight from the kernel, no <code>ps</code> or <code>top</code> running in the background</li>
+          <li>The icon updates every 5&nbsp;seconds and free disk space is only checked once a minute</li>
+          <li>The window refreshes every 2&nbsp;seconds, only while it’s open</li>
+          <li>The storage scan is one low priority <code>du</code> run, saved to disk so it doesn’t run again on every launch</li>
+        </ul>
+      </div>
+      <dl class="numbers">
+        <div><dt>Memory</dt><dd>39&nbsp;MB</dd></div>
+        <div><dt>CPU</dt><dd>0.15% on average<small>0.18&nbsp;s of CPU time in 2&nbsp;minutes</small></dd></div>
+        <div><dt>App size</dt><dd>1.8&nbsp;MB<small>480&nbsp;KB to download, Apple silicon and Intel</small></dd></div>
+        <div><dt>Code</dt><dd>874 lines of Swift</dd></div>
+        <div><dt>Dependencies</dt><dd>None</dd></div>
+      </dl>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <span>gauge</span>
+    <a href="https://github.com/thisisvaze/gauge/blob/HEAD/LICENSE">MIT license</a>
+    <a href="https://github.com/thisisvaze/gauge/releases">Releases</a>
+    <a href="https://github.com/thisisvaze/gauge">GitHub</a>
+  </footer>
+</div>
+</body>
+</html>

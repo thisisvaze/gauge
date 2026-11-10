@@ -37,7 +37,7 @@ Measured on an M5 Pro with macOS 27.2, gauge sitting in the menu bar:
 |---|---|
 | Memory | 39 MB |
 | CPU | 0.15% on average (0.18 s of CPU time in 2 minutes) |
-| App size | 892 KB |
+| App size | 1.8 MB (480 KB to download), Apple silicon and Intel |
 | Code | 874 lines of Swift, no dependencies |
 
 - Memory and per-app numbers come straight from the kernel, no `ps` or `top` running in the background
