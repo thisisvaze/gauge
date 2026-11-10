@@ -3,7 +3,8 @@
 # ./bundle.sh install  -> also replaces /Applications/Gauge.app and relaunches it
 set -e
 cd "$(dirname "$0")"
-swift build -c release
+# SwiftPM stamps the minimum macOS as the binary's SDK version too, and macOS picks newer behavior (like the 26 design) by that number: stamp the real SDK
+swift build -c release -Xlinker -platform_version -Xlinker macos -Xlinker "$(plutil -extract LSMinimumSystemVersion raw Info.plist)" -Xlinker "$(xcrun --show-sdk-version)"
 APP=build/Gauge.app
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"

@@ -4,6 +4,13 @@
 
 A small macOS menu bar app that shows how much memory and disk you're using, and what's taking it up.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="screenshot-dark.png">
+    <img src="screenshot-light.png" width="400" alt="Gauge's window: 21 GB of 32 GB memory used, 241 GB of 995 GB disk free, and the top apps by memory, led by Google Chrome at 3.2 GB">
+  </picture>
+</p>
+
 The icon is two bars - memory on the left, disk on the right. Memory turns orange or red when macOS reports memory pressure, disk turns red once it's over 90% full.
 
 ## Memory
@@ -21,9 +28,25 @@ The icon is two bars - memory on the left, disk on the right. Memory turns orang
 
 Right-click the icon for Activity Monitor, Storage Settings, Open at Login and Quit.
 
+## How light it is
+
+Measured on an M5 Pro with macOS 27.2, Gauge sitting in the menu bar:
+
+| | |
+|---|---|
+| Memory | 39 MB |
+| CPU | 0.15% on average (0.18 s of CPU time in 2 minutes) |
+| App size | 892 KB |
+| Code | 803 lines of Swift, no dependencies |
+
+- Memory and per-app numbers come straight from the kernel, no `ps` or `top` running in the background
+- The icon updates every 5 seconds with a bit of slack so macOS can group the wakeups with others, and free disk space is only checked once a minute
+- The window refreshes every 2 seconds only while it's open, and its views are thrown away when it closes
+- The storage scan is one low priority `du` run that only reports things over 100 MB. It's saved to disk so it doesn't run again on every launch
+
 ## Install
 
-Needs macOS 26 and Xcode 26 (Swift 6.2).
+Runs on macOS 14 or later. Building needs Xcode 26 (Swift 6.2).
 
 ```sh
 git clone https://github.com/thisisvaze/Gauge.git
