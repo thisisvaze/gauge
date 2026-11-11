@@ -338,17 +338,16 @@ func appRows(limit: Int) -> [AppRow] {
     }
 }
 
-@Observable
-final class Model {
-    var mem = memory()
-    var space = disk()
-    var rows: [AppRow] = []
-    var quitting: Set<String> = []  // row ids that read "Quitting…"
-    var big: [Big] = []
-    var tree: Tree?
-    var scannedAt: Date?
-    var scanStart: Date?
-    var fullDiskAccess = hasFullDiskAccess()
+final class Model: ObservableObject {
+    @Published var mem = memory()
+    @Published var space = disk()
+    @Published var rows: [AppRow] = []
+    @Published var quitting: Set<String> = []  // row ids that read "Quitting…"
+    @Published var big: [Big] = []
+    @Published var tree: Tree?
+    @Published var scannedAt: Date?
+    @Published var scanStart: Date?
+    @Published var fullDiskAccess = hasFullDiskAccess()
     let cache = URL.cachesDirectory.appending(path: "dev.vaze.Gauge/scan.txt")
     var trashPath: String { dataRoot + NSHomeDirectory() + "/.Trash" }
 
@@ -513,7 +512,7 @@ final class Monitor: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         host.sizingOptions = .preferredContentSize
         popover.contentViewController = host
         popover.appearance = NSApp.effectiveAppearance  // your Light/Dark setting, not the wallpaper-tinted menu bar's
-        NSApp.activate()
+        if #available(macOS 14, *) { NSApp.activate() } else { NSApp.activate(ignoringOtherApps: true) }
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         live = Timer.scheduledTimer(timeInterval: 2, target: self, selector: #selector(refresh), userInfo: nil, repeats: true)
         // .transient only closes on outside clicks while gauge is the active app, which macOS doesn't always grant a menu bar app.

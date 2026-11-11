@@ -18,9 +18,22 @@ enum Palette {
     static let good = tone(0x237548, 0x74cda4), warning = tone(0x916300, 0xe4bb62), critical = tone(0xb53030, 0xf08080)
 }
 
+extension View {
+    /// Keyboard focus only, so a click doesn't select the row. macOS 13 can't separate the two, so there a click selects it too.
+    @ViewBuilder func rowFocus() -> some View {
+        if #available(macOS 14, *) { focusable(interactions: .activate) } else { focusable() }
+    }
+    /// macOS 13 has no key handlers in SwiftUI; there the arrows do nothing and Tab still moves between the panels.
+    @ViewBuilder func arrowKeys(left: @escaping () -> Void, right: @escaping () -> Void) -> some View {
+        if #available(macOS 14, *) {
+            onKeyPress(.leftArrow) { left(); return .handled }.onKeyPress(.rightArrow) { right(); return .handled }
+        } else { self }
+    }
+}
+
 struct Dashboard: View {
     enum Resource { case memory, storage }
-    let model: Model
+    @ObservedObject var model: Model
     @State private var resource: Resource = .memory
 
     var body: some View {
@@ -40,8 +53,7 @@ struct Dashboard: View {
                     .accessibilityHint("Show largest items")
             }
             .padding(6)
-            .onKeyPress(.leftArrow) { resource = .memory; return .handled }
-            .onKeyPress(.rightArrow) { resource = .storage; return .handled }
+            .arrowKeys(left: { resource = .memory }, right: { resource = .storage })
             Divider()
             SwiftUI.Group {
                 switch resource {
@@ -71,7 +83,7 @@ struct Dashboard: View {
 }
 
 struct MemoryPanel: View {
-    let model: Model
+    @ObservedObject var model: Model
 
     var body: some View {
         let m = model.mem
@@ -94,7 +106,7 @@ struct MemoryPanel: View {
 }
 
 struct DiskPanel: View {
-    let model: Model
+    @ObservedObject var model: Model
 
     var body: some View {
         let s = model.space, used = max(0, s.total - s.free)
@@ -175,7 +187,8 @@ struct ConfirmButton: View {
 }
 
 struct AppRowView: View {
-    let row: AppRow, model: Model
+    let row: AppRow
+    @ObservedObject var model: Model
     @State private var hover = false
     @FocusState private var focused: Bool
 
@@ -207,7 +220,7 @@ struct AppRowView: View {
         }
         .font(.system(size: 12)).frame(height: 36).padding(.horizontal, 8)
         .background(RoundedRectangle(cornerRadius: 6).fill(hover || focused ? Palette.hover : .clear))
-        .contentShape(Rectangle()).focusable(interactions: .activate).focused($focused)  // keyboard focus only: a click shouldn't select the row
+        .contentShape(Rectangle()).rowFocus().focused($focused)
         .onTapGesture { row.open?() }
         .onHover { hover = $0 }.help(row.detail)
         .contextMenu {
@@ -232,7 +245,7 @@ struct AppRowView: View {
 }
 
 struct Explorer: View {
-    let model: Model
+    @ObservedObject var model: Model
     @State private var filter = "All"
 
     var body: some View {
@@ -310,7 +323,7 @@ struct BigRow: View {
         }
         .font(.system(size: 12)).frame(height: 44).padding(.horizontal, 8)
         .background(RoundedRectangle(cornerRadius: 6).fill(hover || focused || confirmingTrash ? Palette.hover : .clear))
-        .contentShape(Rectangle()).focusable(interactions: .activate).focused($focused)  // keyboard focus only: a click shouldn't select the row
+        .contentShape(Rectangle()).rowFocus().focused($focused)
         .onHover { hover = $0 }
         .help((String(item.path.dropFirst(dataRoot.count)) as NSString).abbreviatingWithTildeInPath
               + (item.date.map { "\n" + (item.opened ? "Last opened " : "Last changed ") + $0.formatted(date: .abbreviated, time: .omitted) } ?? ""))

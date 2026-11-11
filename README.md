@@ -47,7 +47,7 @@ Measured on an M5 Pro with macOS 27.2, gauge sitting in the menu bar:
 
 ## Install
 
-Download [gauge.zip](https://github.com/thisisvaze/gauge/releases/latest/download/gauge.zip), unzip it and drag gauge.app to Applications. Runs on macOS 14 or later, Apple silicon and Intel.
+Download [gauge.zip](https://github.com/thisisvaze/gauge/releases/latest/download/gauge.zip), unzip it and drag gauge.app to Applications. Runs on macOS 13 or later, Apple silicon and Intel.
 
 ### Build it yourself
 
