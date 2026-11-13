@@ -319,20 +319,57 @@ struct Explorer: View {
                 }
             }
             .padding(.horizontal, 8).frame(height: 32)
-            if model.tree != nil {
+            if model.scannedAt != nil {
                 ForEach(shown) { BigRow(item: $0, model: model) }
                 if shown.isEmpty { Text("Nothing over 500 MB").font(.system(size: 12)).foregroundStyle(Palette.ink3).padding(24) }
             } else if model.scanStart != nil {
                 ProgressView("Scanning storage…").controlSize(.small).frame(maxWidth: .infinity).frame(height: 200)
+            } else if !model.fullDiskAccess {
+                AccessCard(model: model)
             } else {
                 Button("Find what’s using space", systemImage: "magnifyingglass") { model.scan() }
                     .buttonStyle(.borderless).frame(maxWidth: .infinity).frame(height: 200)
             }
-            if !model.fullDiskAccess {
+            if !model.fullDiskAccess && model.scannedAt != nil {
                 Button("Allow Full Disk Access for a complete scan…") { NSWorkspace.shared.open(fullDiskAccessSettings) }
                     .buttonStyle(.link).font(.system(size: 11)).padding(.top, 8)
             }
         }
+        .onAppear { model.rebuild() }  // drop anything deleted since, e.g. from Finder
+    }
+}
+
+/// Before the first scan without Full Disk Access: why it helps and how to give it. Memory and CPU need nothing.
+struct AccessCard: View {
+    @ObservedObject var model: Model
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                // Not every Mac lists gauge in Full Disk Access until it's added: the icon drags straight into the list
+                Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 40, height: 40)
+                    .onDrag { NSItemProvider(contentsOf: Bundle.main.bundleURL) ?? NSItemProvider() }
+                    .help("Drag into the Full Disk Access list")
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Let gauge see your whole disk").font(.system(size: 13, weight: .medium))
+                    Text("Only the storage scan needs this").font(.system(size: 11)).foregroundStyle(Palette.ink3)
+                }
+            }
+            Text("macOS keeps some folders private, like Mail, Messages and other apps’ data. Without Full Disk Access gauge can’t count them, so big things go missing from the list. It only reads sizes and dates, never what’s inside your files, and none of it leaves your Mac.")
+                .foregroundStyle(Palette.ink2).fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("1. Open Full Disk Access in System Settings")
+                Text("2. Turn on gauge. Not in the list? Drag the icon above into it")
+                Text("3. That’s it, the scan starts on its own")
+            }
+            HStack(spacing: 8) {
+                Button("Open System Settings") { NSWorkspace.shared.open(fullDiskAccessSettings) }.buttonStyle(.bordered)
+                Button("Scan without it") { model.scan() }.buttonStyle(.borderless).foregroundStyle(Palette.ink2)
+            }
+            .controlSize(.small)
+        }
+        .font(.system(size: 12))
+        .padding(.horizontal, 8).padding(.vertical, 12)
     }
 }
 

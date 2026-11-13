@@ -315,6 +315,51 @@ extension Tree {
     var duText: String { size.map { "\($0.value / 1024)\t\($0.key)" }.joined(separator: "\n") }
 }
 
+// MARK: - Updates
+
+/// "v1.10" is newer than "1.9".
+nonisolated func isNewer(_ tag: String, than version: String) -> Bool {
+    tag.trimmingPrefix("v").compare(version, options: .numeric) == .orderedDescending
+}
+
+/// The latest GitHub release, unpacked next to this app, if it's newer and signed by the same developer.
+/// Your own builds (Apple Development or ad hoc signature) never match a release's, so they never update.
+@concurrent func newerRelease() async -> URL? {
+    let me = Bundle.main.bundleURL
+    guard let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
+          let (json, _) = try? await URLSession.shared.data(from: URL(string: "https://api.github.com/repos/thisisvaze/gauge/releases/latest")!),
+          let tag = (try? JSONSerialization.jsonObject(with: json) as? [String: Any])?["tag_name"] as? String,
+          isNewer(tag, than: version),
+          let (zip, _) = try? await URLSession.shared.download(from: URL(string: "https://github.com/thisisvaze/gauge/releases/download/\(tag)/gauge.zip")!),
+          let dir = try? FileManager.default.url(for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: me, create: true)
+    else { return nil }
+    defer { try? FileManager.default.removeItem(at: zip) }
+    let unzip = Process()
+    unzip.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+    unzip.arguments = ["-x", "-k", zip.path, dir.path]
+    guard (try? unzip.run()) != nil else { return nil }
+    unzip.waitUntilExit()
+    let new = dir.appending(path: "gauge.app")
+    var mine: SecStaticCode?, theirs: SecStaticCode?, req: SecRequirement?
+    guard unzip.terminationStatus == 0,
+          SecStaticCodeCreateWithPath(me as CFURL, [], &mine) == errSecSuccess, let mine,
+          SecCodeCopyDesignatedRequirement(mine, [], &req) == errSecSuccess, let req,
+          SecStaticCodeCreateWithPath(new as CFURL, [], &theirs) == errSecSuccess, let theirs,
+          SecStaticCodeCheckValidity(theirs, SecCSFlags(rawValue: kSecCSStrictValidate | kSecCSCheckAllArchitectures), req) == errSecSuccess
+    else { return nil }
+    return new
+}
+
+/// Swap in the new app and start it. Does nothing where gauge can't write itself (not an admin, or run from Downloads).
+func install(_ new: URL) {
+    guard (try? FileManager.default.replaceItemAt(Bundle.main.bundleURL, withItemAt: new)) != nil else { return }
+    let open = Process()
+    open.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+    open.arguments = ["-n", Bundle.main.bundlePath]
+    guard (try? open.run()) != nil else { return }
+    NSApp.terminate(nil)
+}
+
 let activityMonitor = URL(fileURLWithPath: "/System/Applications/Utilities/Activity Monitor.app")
 let storageSettings = URL(string: "x-apple.systempreferences:com.apple.settings.Storage")!
 let fullDiskAccessSettings = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")!
@@ -418,7 +463,6 @@ final class Model: ObservableObject {
     @Published var cpuRows: [AppRow] = []
     @Published var quitting: Set<String> = []  // row ids that read "Quitting…"
     @Published var big: [Big] = []
-    @Published var tree: Tree?
     @Published var scannedAt: Date?
     @Published var scanStart: Date?
     @Published var fullDiskAccess = hasFullDiskAccess()
@@ -429,20 +473,17 @@ final class Model: ObservableObject {
     var trashPath: String { dataRoot + NSHomeDirectory() + "/.Trash" }
 
     init() {
-        if let text = try? String(contentsOf: cache, encoding: .utf8) {
-            tree = parseDu(text)
-            scannedAt = (try? cache.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
-            rebuild()
-        } else if fullDiskAccess {
-            scan()  // first run: have the list ready
-        }
+        scannedAt = (try? cache.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
     }
 
+    /// The last scan, read from disk only while it's needed: kept in memory it was a third of gauge's footprint.
+    func load() -> Tree? { (try? String(contentsOf: cache, encoding: .utf8)).map(parseDu) }
+
     /// The "biggest things" list, with when each was last opened (Spotlight) or changed. Re-checks the disk so removed items drop out.
-    func rebuild() {
+    func rebuild(_ tree: Tree? = nil) {
         let fm = FileManager.default
-        let found = tree.map { candidates($0, isDirectory: { var d: ObjCBool = false; return fm.fileExists(atPath: $0, isDirectory: &d) && d.boolValue },
-                                          isPackage: { NSWorkspace.shared.isFilePackage(atPath: $0) }) } ?? []
+        let found = (tree ?? load()).map { candidates($0, isDirectory: { var d: ObjCBool = false; return fm.fileExists(atPath: $0, isDirectory: &d) && d.boolValue },
+                                                     isPackage: { NSWorkspace.shared.isFilePackage(atPath: $0) }) } ?? []
         big = found.prefix(40).filter { fm.fileExists(atPath: $0.path) }.map { item in
             var item = item
             let url = URL(fileURLWithPath: userPath(item.path))
@@ -498,21 +539,27 @@ final class Model: ObservableObject {
             refresh()
         }
     }
-    func refreshDisk() { space = disk(); fullDiskAccess = hasFullDiskAccess() }
+    func refreshDisk() {
+        space = disk()
+        fullDiskAccess = hasFullDiskAccess()
+        // First run with access, or access given since the last scan, which couldn't see the private folders
+        if fullDiskAccess, !UserDefaults.standard.bool(forKey: "fullScan"), scanStart == nil { scan() }
+    }
 
     func scan() {
         scanStart = .now
+        let full = fullDiskAccess
         Task {
-            tree = parseDu(await du(dataRoot))
+            let tree = parseDu(await du(dataRoot))
+            save(tree)
             scannedAt = .now
             scanStart = nil
-            save()
-            rebuild()
+            UserDefaults.standard.set(full, forKey: "fullScan")
+            rebuild(tree)
         }
     }
 
-    func save() {
-        guard let tree else { return }
+    func save(_ tree: Tree) {
         try? FileManager.default.createDirectory(at: cache.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? tree.duText.write(to: cache, atomically: true, encoding: .utf8)
     }
@@ -520,20 +567,14 @@ final class Model: ObservableObject {
     /// False when macOS refused (e.g. an app owned by the system): show it in Finder instead, which can ask for your password.
     @discardableResult func trash(_ path: String) -> Bool {
         guard (try? FileManager.default.trashItem(at: URL(fileURLWithPath: userPath(path)), resultingItemURL: nil)) != nil else { return false }
-        let size = tree?.size[path] ?? 0
-        tree?.remove(path)
-        tree?.add(trashPath, size)
-        save()
-        rebuild()
+        if var tree = load() {
+            let size = tree.size[path] ?? 0
+            tree.remove(path)
+            tree.add(trashPath, size)
+            save(tree)
+            rebuild(tree)
+        }
         return true
-    }
-
-    func emptyTrash() {
-        let fm = FileManager.default
-        for name in (try? fm.contentsOfDirectory(atPath: trashPath)) ?? [] { try? fm.removeItem(atPath: trashPath + "/" + name) }
-        tree?.remove(trashPath)
-        save()
-        refreshDisk()
     }
 }
 
@@ -549,7 +590,7 @@ final class Monitor: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     let status = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     let popover = NSPopover()
     let model = Model()
-    var ticks = 0, bg: Timer?, live: Timer?, outside: Any?
+    var ticks = 0, bg: Timer?, live: Timer?, outside: Any?, shown: [Int] = []
 
     override init() {
         super.init()
@@ -561,6 +602,13 @@ final class Monitor: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         tick()
         schedule()
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(appActivated), name: NSWorkspace.didActivateApplicationNotification, object: nil)
+        Task {
+            try? await Task.sleep(for: .seconds(60))  // let login settle, then check once a day
+            while true {
+                if let new = await newerRelease(), !popover.isShown { install(new) }  // never restart under your pointer
+                try? await Task.sleep(for: .seconds(86_400))
+            }
+        }
     }
 
     /// Stay on the 5 s coalesced timer unless CPU or GPU is shown in the menu bar.
@@ -573,8 +621,10 @@ final class Monitor: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     /// Switching to another app (from a row, ⌘Tab or the Dock) closes the window.
+    /// Except System Settings: the window stays beside it so gauge's icon can be dragged into Full Disk Access.
     @objc func appActivated(_ note: Notification) {
-        if note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication != .current { popover.performClose(nil) }
+        let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+        if app != .current && app?.bundleIdentifier != "com.apple.systempreferences" { popover.performClose(nil) }
     }
 
     @objc func tick() {
@@ -595,11 +645,14 @@ final class Monitor: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             case .gpu: (model.gpuUsed, model.gpuUsed > 0.9 ? .systemOrange : nil)
             }
         }
-        status.button?.image = gauge(levels)
+        // Redraw only when a bar moves a pixel or changes color: most ticks change nothing you could see
+        let drawn = levels.flatMap { [Int(($0.0 * 24).rounded()), $0.1.map { $0 == .systemRed ? 2 : 1 } ?? 0] }
+        if drawn != shown { status.button?.image = gauge(levels); shown = drawn }
         var tip = ["Memory \(bytes(m.used, .memory)) of \(bytes(m.total, .memory))", "\(bytes(s.free)) free on disk"]
         if bars.contains(.cpu) { tip.append("CPU \(pct(model.cpu.used))") }
         if bars.contains(.gpu) { tip.append("GPU \(pct(model.gpuUsed))") }
-        status.button?.toolTip = tip.joined(separator: " · ")
+        let text = tip.joined(separator: " · ")
+        if status.button?.toolTip != text { status.button?.toolTip = text }
     }
 
     @objc func toggle() {
@@ -662,7 +715,6 @@ final class Monitor: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         guard let button = status.button else { return }
         let cold = model.refresh()
         model.refreshDisk()
-        model.rebuild()  // drop anything deleted since, e.g. from Finder
         let host = NSHostingController(rootView: Dashboard(model: model))
         host.sizingOptions = .preferredContentSize
         popover.contentViewController = host

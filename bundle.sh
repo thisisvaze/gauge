@@ -32,6 +32,7 @@ APP=build/gauge.app
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$(build --show-bin-path)/Gauge" "$APP/Contents/MacOS/"
+strip -x "$APP/Contents/MacOS/Gauge"  # local symbols are half the binary and nothing reads them
 cp build/AppIcon.icns "$APP/Contents/Resources/"
 cp Info.plist "$APP/Contents/"
 if [ "$1" = release ]; then

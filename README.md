@@ -43,7 +43,7 @@ Measured on an M5 Pro with macOS 27.2, gauge sitting in the menu bar:
 | Memory | 54 MB |
 | CPU | 0.18% on average (0.21 s of CPU time in 2 minutes) |
 | App size | 2.2 MB (609 KB to download), Apple silicon and Intel |
-| Code | 1,092 lines of Swift, no dependencies |
+| Code | 1,181 lines of Swift, no dependencies |
 
 - Memory and per-app numbers come straight from the kernel, no `ps` or `top` running in the background
 - The icon updates every 5 seconds with a bit of slack so macOS can group the wakeups with others, and free disk space is only checked once a minute. With CPU or GPU bars in the menu bar it updates every 2 seconds instead
@@ -52,7 +52,7 @@ Measured on an M5 Pro with macOS 27.2, gauge sitting in the menu bar:
 
 ## Install
 
-Download [gauge.zip](https://github.com/thisisvaze/gauge/releases/latest/download/gauge.zip), unzip it and drag gauge.app to Applications. Runs on macOS 13 or later, Apple silicon and Intel.
+Download [gauge.zip](https://github.com/thisisvaze/gauge/releases/latest/download/gauge.zip), unzip it and drag gauge.app to Applications. Runs on macOS 13 or later, Apple silicon and Intel. After that gauge keeps itself up to date: once a day it checks GitHub for a new release, and if there is one it installs it and restarts.
 
 ### Build it yourself
 
@@ -64,7 +64,7 @@ cd gauge
 ./bundle.sh install
 ```
 
-That builds a release, copies gauge.app to /Applications and opens it. `./bundle.sh` on its own just builds `build/gauge.app`, and `./bundle.sh release` makes the universal, notarized `build/gauge.zip` (set `NOTARY_PROFILE` first, see the top of the script).
+That builds a release, copies gauge.app to /Applications and opens it. `./bundle.sh` on its own just builds `build/gauge.app`, and `./bundle.sh release` makes the universal, notarized `build/gauge.zip` (set `NOTARY_PROFILE` first, see the top of the script). Builds you make yourself don't update themselves, since they aren't signed like the releases.
 
 ### Full Disk Access
 

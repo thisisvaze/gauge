@@ -134,3 +134,12 @@ import Testing
     #expect(gauge([(0.5, nil), (0.5, nil)]).size.width == 13)
     #expect(gauge([(0.5, nil), (0.5, nil), (0.5, nil), (0.5, nil)]).size.width == 27)
 }
+
+@Test func `a release is newer by version number, not by text`() {
+    #expect(isNewer("v1.10", than: "1.9"))
+    #expect(isNewer("v1.3", than: "1.2"))
+    #expect(isNewer("v1.2.1", than: "1.2"))
+    #expect(!isNewer("v1.2.1", than: "1.2.1"))
+    #expect(!isNewer("v1.2", than: "1.2"))
+    #expect(!isNewer("v1.1", than: "1.2"))
+}
