@@ -2,12 +2,12 @@
 
 # gauge
 
-A small macOS menu bar app that shows how much memory and disk you're using, and what's taking it up.
+A small macOS menu bar app that shows how much memory, disk and CPU you're using, and what's taking it up.
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/gauge-dark.png">
-    <img src="docs/gauge-light.png" width="640" alt="gauge open from the menu bar: 21 GB of 32 GB memory used, 241 GB of 995 GB disk free, and the top apps by memory, with the pointer on Google Chrome's Quit button">
+    <img src="docs/gauge-light.png" width="640" alt="gauge open from the menu bar: 21 GB of 32 GB memory used, 241 GB of 995 GB disk free, 23% CPU used, and the top apps by memory, with the pointer on Google Chrome's Quit button">
   </picture>
 </p>
 
@@ -40,13 +40,13 @@ Measured on an M5 Pro with macOS 27.2, gauge sitting in the menu bar:
 
 | | |
 |---|---|
-| Memory | 39 MB |
-| CPU | 0.15% on average (0.18 s of CPU time in 2 minutes) |
-| App size | 1.8 MB (480 KB to download), Apple silicon and Intel |
-| Code | 874 lines of Swift, no dependencies |
+| Memory | 54 MB |
+| CPU | 0.18% on average (0.21 s of CPU time in 2 minutes) |
+| App size | 2.2 MB (609 KB to download), Apple silicon and Intel |
+| Code | 1,092 lines of Swift, no dependencies |
 
 - Memory and per-app numbers come straight from the kernel, no `ps` or `top` running in the background
-- The icon updates every 5 seconds with a bit of slack so macOS can group the wakeups with others, and free disk space is only checked once a minute
+- The icon updates every 5 seconds with a bit of slack so macOS can group the wakeups with others, and free disk space is only checked once a minute. With CPU or GPU bars in the menu bar it updates every 2 seconds instead
 - The window refreshes every 2 seconds only while it's open, and its views are thrown away when it closes
 - The storage scan is one low priority `du` run that only reports things over 100 MB. It's saved to disk so it doesn't run again on every launch
 

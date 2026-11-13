@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>gauge - memory and disk in your menu bar</title>
-<meta name="description" content="A small macOS menu bar app that shows how much memory and disk you’re using, and what’s taking it up.">
+<title>gauge - memory, disk and CPU in your menu bar</title>
+<meta name="description" content="A small macOS menu bar app that shows how much memory, disk and CPU you’re using, and what’s taking it up.">
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="logo.svg" type="image/svg+xml">
 <link rel="canonical" href="https://thisisvaze.github.io/gauge/">
@@ -12,13 +12,13 @@
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://thisisvaze.github.io/gauge/">
 <meta property="og:title" content="gauge">
-<meta property="og:description" content="A small macOS menu bar app that shows how much memory and disk you’re using, and what’s taking it up.">
+<meta property="og:description" content="A small macOS menu bar app that shows how much memory, disk and CPU you’re using, and what’s taking it up.">
 <meta property="og:image" content="https://thisisvaze.github.io/gauge/social-preview.jpg">
 <meta property="og:image:width" content="1280">
 <meta property="og:image:height" content="640">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="gauge">
-<meta name="twitter:description" content="A small macOS menu bar app that shows how much memory and disk you’re using, and what’s taking it up.">
+<meta name="twitter:description" content="A small macOS menu bar app that shows how much memory, disk and CPU you’re using, and what’s taking it up.">
 <meta name="twitter:image" content="https://thisisvaze.github.io/gauge/social-preview.jpg">
 
 <link rel="stylesheet" href="tokens.css">
@@ -153,6 +153,7 @@ h2 { font-size: var(--text-lg); font-weight: 700; line-height: 1.2; letter-spaci
 }
 .mark-memory { --mark: var(--color-memory-apps); }
 .mark-storage { --mark: var(--color-storage); }
+.mark-cpu { --mark: var(--color-cpu); }
 ul {
   margin: var(--space-lg) 0 0;
   padding-left: var(--space-xl);
@@ -234,7 +235,7 @@ li::marker { color: var(--color-muted); }
     <section class="split hero">
       <div class="hero-text">
         <h1>See what’s eating your memory</h1>
-        <p class="lede">A small macOS menu bar app that shows how much memory and disk you’re using, and what’s taking it up.</p>
+        <p class="lede">A small macOS menu bar app that shows how much memory, disk and CPU you’re using, and what’s taking it up.</p>
         <div class="get">
           <a class="btn" href="https://github.com/thisisvaze/gauge/releases/latest/download/gauge.zip">Download</a>
           <p>macOS&nbsp;13 or later, Apple silicon and Intel. Free and open source (MIT).</p>
@@ -244,7 +245,7 @@ li::marker { color: var(--color-muted); }
       <figure class="shot">
         <picture>
           <source srcset="gauge-dark.png" media="(prefers-color-scheme: dark)">
-          <img src="gauge-light.png" width="640" height="568" fetchpriority="high" alt="gauge open from the menu bar: 21 GB of 32 GB memory used, 241 GB of 995 GB disk free, and the top apps by memory, with the pointer on Google Chrome’s Quit button">
+          <img src="gauge-light.png" width="640" height="560" fetchpriority="high" alt="gauge open from the menu bar: 21 GB of 32 GB memory used, 241 GB of 995 GB disk free, 23% CPU used, and the top apps by memory, with the pointer on Google Chrome’s Quit button">
         </picture>
       </figure>
     </section>
@@ -252,7 +253,7 @@ li::marker { color: var(--color-muted); }
     <section class="split features" aria-label="What it shows">
       <figure class="icon-note">
         <img src="logo.svg" alt="" width="128" height="128" loading="lazy">
-        <figcaption>The icon is two bars - memory on the left, disk on the right. Memory turns orange or red when macOS reports memory pressure, disk turns red once it’s over 90% full.</figcaption>
+        <figcaption>The icon is two bars - memory on the left, disk on the right. Memory turns orange or red when macOS reports memory pressure, disk turns red once it’s over 90% full. Right-click it to also show CPU and GPU bars.</figcaption>
       </figure>
       <div class="lists">
         <div>
@@ -273,6 +274,13 @@ li::marker { color: var(--color-muted); }
             <li>Full Disk Access is optional, you only need it for a complete scan</li>
           </ul>
         </div>
+        <div>
+          <h2 class="mark mark-cpu">CPU &amp; GPU</h2>
+          <ul>
+            <li>Total CPU used across your cores, split into user and system, plus current GPU utilization</li>
+            <li>Your top apps and command line tools by CPU, with the same click-to-switch and Quit actions</li>
+          </ul>
+        </div>
       </div>
     </section>
 
@@ -282,16 +290,16 @@ li::marker { color: var(--color-muted); }
         <p>Measured on an M5&nbsp;Pro with macOS&nbsp;27.2, gauge sitting in the menu bar.</p>
         <ul>
           <li>Memory and per-app numbers come straight from the kernel, no <code>ps</code> or <code>top</code> running in the background</li>
-          <li>The icon updates every 5&nbsp;seconds and free disk space is only checked once a minute</li>
+          <li>The icon updates every 5&nbsp;seconds (2 with CPU or GPU bars showing) and free disk space is only checked once a minute</li>
           <li>The window refreshes every 2&nbsp;seconds, only while it’s open</li>
           <li>The storage scan is one low priority <code>du</code> run, saved to disk so it doesn’t run again on every launch</li>
         </ul>
       </div>
       <dl class="numbers">
-        <div><dt>Memory</dt><dd>39&nbsp;MB</dd></div>
-        <div><dt>CPU</dt><dd>0.15% on average<small>0.18&nbsp;s of CPU time in 2&nbsp;minutes</small></dd></div>
-        <div><dt>App size</dt><dd>1.8&nbsp;MB<small>480&nbsp;KB to download, Apple silicon and Intel</small></dd></div>
-        <div><dt>Code</dt><dd>874 lines of Swift</dd></div>
+        <div><dt>Memory</dt><dd>54&nbsp;MB</dd></div>
+        <div><dt>CPU</dt><dd>0.18% on average<small>0.21&nbsp;s of CPU time in 2&nbsp;minutes</small></dd></div>
+        <div><dt>App size</dt><dd>2.2&nbsp;MB<small>609&nbsp;KB to download, Apple silicon and Intel</small></dd></div>
+        <div><dt>Code</dt><dd>1,092 lines of Swift</dd></div>
         <div><dt>Dependencies</dt><dd>None</dd></div>
       </dl>
     </section>

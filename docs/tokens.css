@@ -22,6 +22,7 @@
   --color-accent-soft: oklch(94% .005 90);
   --color-memory-apps: oklch(51% .095 175);
   --color-storage: oklch(59% .135 43);
+  --color-cpu: oklch(51% .119 250);
   --color-focus: oklch(30% .007 90);
   /* added: hover step for the graphite button */
   --color-accent-hover: oklch(38% .007 90);
@@ -73,6 +74,7 @@
     --color-accent-hover: oklch(84% .005 90);
     --color-memory-apps: oklch(74% .10 175);
     --color-storage: oklch(75% .12 43);
+    --color-cpu: oklch(75% .11 247);
     --color-focus: oklch(93% .005 90);
   }
 }
