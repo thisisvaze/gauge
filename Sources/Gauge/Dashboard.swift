@@ -15,6 +15,7 @@ enum Palette {
     static let track = tone(0xe8e7e2, 0x353530)
     static let apps = tone(0x087d6b, 0x75d0b1), wired = tone(0x9460bf, 0xc5a2e5)
     static let compressed = tone(0xb08329, 0xe4bb62), storage = tone(0xba6038, 0xe5a57b)
+    static let cpu = tone(0x2568a6, 0x72b4f0), system = tone(0xc25450, 0xeb8682)
     static let good = tone(0x237548, 0x74cda4), warning = tone(0x916300, 0xe4bb62), critical = tone(0xb53030, 0xf08080)
 }
 
@@ -32,9 +33,14 @@ extension View {
 }
 
 struct Dashboard: View {
-    enum Resource { case memory, storage }
+    enum Resource: CaseIterable { case memory, storage, cpu }
     @ObservedObject var model: Model
     @State private var resource: Resource = .memory
+
+    func step(_ delta: Int) {
+        let all = Resource.allCases
+        if let i = all.firstIndex(of: resource), all.indices.contains(i + delta) { resource = all[i + delta] }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -44,16 +50,22 @@ struct Dashboard: View {
                     .background(RoundedRectangle(cornerRadius: 10).fill(resource == .memory ? Palette.hover : .clear))
                     .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(resource == .memory ? Palette.track : .clear))
                     .accessibilityAddTraits(resource == .memory ? .isSelected : [])
-                    .accessibilityHint("Show top apps")
+                    .accessibilityHint("Show top apps by memory")
                 Button { resource = .storage } label: { DiskPanel(model: model) }
                     .buttonStyle(.plain)
                     .background(RoundedRectangle(cornerRadius: 10).fill(resource == .storage ? Palette.hover : .clear))
                     .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(resource == .storage ? Palette.track : .clear))
                     .accessibilityAddTraits(resource == .storage ? .isSelected : [])
                     .accessibilityHint("Show largest items")
+                Button { resource = .cpu } label: { CPUPanel(model: model) }
+                    .buttonStyle(.plain)
+                    .background(RoundedRectangle(cornerRadius: 10).fill(resource == .cpu ? Palette.hover : .clear))
+                    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(resource == .cpu ? Palette.track : .clear))
+                    .accessibilityAddTraits(resource == .cpu ? .isSelected : [])
+                    .accessibilityHint("Show top apps by CPU")
             }
             .padding(6)
-            .arrowKeys(left: { resource = .memory }, right: { resource = .storage })
+            .arrowKeys(left: { step(-1) }, right: { step(1) })
             Divider()
             SwiftUI.Group {
                 switch resource {
@@ -70,12 +82,23 @@ struct Dashboard: View {
                     }
                 case .storage:
                     Explorer(model: model)
+                case .cpu:
+                    VStack(spacing: 0) {
+                        HStack {
+                            Text("Top apps").fontWeight(.medium)
+                            Spacer()
+                            Text("User \(pct(model.cpu.user)) · System \(pct(model.cpu.system))").monospacedDigit()
+                        }
+                        .font(.system(size: 11)).foregroundStyle(Palette.ink2)
+                        .padding(.horizontal, 8).frame(height: 28)
+                        ForEach(model.cpuRows) { AppRowView(row: $0, model: model) }
+                    }
                 }
             }
             .padding(.horizontal, 8).padding(.top, 4).padding(.bottom, 10)
             .frame(minHeight: 354, alignment: .top)
         }
-        .frame(width: 400)
+        .frame(width: 432)
         .foregroundStyle(Palette.ink)
         .tint(Palette.ink)
         .background(Palette.surface)
@@ -93,12 +116,13 @@ struct MemoryPanel: View {
                 Spacer(minLength: 4)
                 Pressure(level: m.pressure)
             }
+            .frame(height: 14)
             Figure(value: bytes(m.used, .memory), caption: "used")
             Text("of \(bytes(m.total, .memory))").font(.system(size: 10)).foregroundStyle(Palette.ink3)
             StackedBar(parts: [(m.app, Palette.apps), (m.wired, Palette.wired), (m.compressed, Palette.compressed)], total: m.total, track: Palette.track)
                 .padding(.top, 4)
         }
-        .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10).frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .help("Apps \(bytes(m.app, .memory)) · Wired \(bytes(m.wired, .memory)) · Compressed \(bytes(m.compressed, .memory))")
         .accessibilityElement(children: .combine)
@@ -118,9 +142,33 @@ struct DiskPanel: View {
             StackedBar(parts: [(used, Double(used) / Double(max(s.total, 1)) > 0.9 ? Palette.critical : Palette.storage)], total: s.total, track: Palette.track)
                 .padding(.top, 4)
         }
-        .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10).frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .help("\(bytes(used)) used · \(bytes(s.free)) available")
+        .accessibilityElement(children: .combine)
+    }
+}
+
+struct CPUPanel: View {
+    @ObservedObject var model: Model
+
+    var body: some View {
+        let c = model.cpu, g = model.gpuUsed
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("CPU").font(.system(size: 12, weight: .medium)).foregroundStyle(Palette.ink2)
+                Spacer(minLength: 4)
+                Text("GPU \(pct(g))").font(.system(size: 10)).monospacedDigit().foregroundStyle(g > 0.9 ? Palette.warning : Palette.ink3)
+            }
+            .frame(height: 14)
+            Figure(value: "\(Int((c.used * 100).rounded())) %", caption: "used")
+            Text("\(ProcessInfo.processInfo.activeProcessorCount) cores").font(.system(size: 10)).foregroundStyle(Palette.ink3)
+            StackedBar(parts: [(Int64((c.user * 1000).rounded()), Palette.cpu), (Int64((c.system * 1000).rounded()), Palette.system)], total: 1000, track: Palette.track)
+                .padding(.top, 4)
+        }
+        .padding(10).frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .help("User \(pct(c.user)) · System \(pct(c.system)) · GPU \(pct(g))")
         .accessibilityElement(children: .combine)
     }
 }
@@ -132,7 +180,7 @@ struct Pressure: View {
         let (label, icon, color) = level >= 4 ? ("Critical", "exclamationmark.octagon.fill", Palette.critical)
             : level >= 2 ? ("Elevated", "exclamationmark.triangle.fill", Palette.warning)
             : ("Normal", "checkmark.circle.fill", Palette.good)
-        Label(label, systemImage: icon).font(.system(size: 10)).foregroundStyle(color)
+        Label(label, systemImage: icon).font(.system(size: 10)).lineLimit(1).fixedSize().foregroundStyle(color)
             .accessibilityLabel("\(label) memory pressure")
     }
 }
@@ -143,8 +191,8 @@ struct Figure: View {
     var body: some View {
         let parts = value.split(separator: " ", maxSplits: 1)
         HStack(alignment: .firstTextBaseline, spacing: 4) {
-            Text(parts.first ?? "0").font(.system(size: 28, weight: .semibold)).tracking(-1)
-            if parts.count == 2 { Text(parts[1]).font(.system(size: 15, weight: .medium)) }
+            Text(parts.first ?? "0").font(.system(size: 26, weight: .semibold)).tracking(-1)
+            if parts.count == 2 { Text(parts[1]).font(.system(size: 14, weight: .medium)) }
             Text(caption).font(.system(size: 11)).foregroundStyle(Palette.ink2)
         }
         .monospacedDigit().fixedSize()
@@ -209,7 +257,7 @@ struct AppRowView: View {
                 if quitting {
                     Text("Quitting…").foregroundStyle(Palette.ink3)
                 } else {
-                    Text(bytes(row.bytes, .memory)).monospacedDigit().foregroundStyle(Palette.ink2)
+                    Text(row.value).monospacedDigit().foregroundStyle(Palette.ink2)
                         .opacity((hover || focused) && row.quit != nil ? 0 : 1)
                     if hover || focused, row.quit != nil {
                         Button("Quit") { model.quit(row, force: false) }.buttonStyle(.bordered).controlSize(.small)
@@ -233,7 +281,7 @@ struct AppRowView: View {
             Button("Open Activity Monitor") { NSWorkspace.shared.open(activityMonitor) }
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(row.name), \(quitting ? "quitting" : bytes(row.bytes, .memory))")
+        .accessibilityLabel("\(row.name), \(quitting ? "quitting" : row.value)")
         .accessibilityActions {
             if let open = row.open { Button("Switch to \(row.name)") { open() } }
             if row.quit != nil {

@@ -1,4 +1,5 @@
 import AppKit
+import IOKit
 import SwiftUI
 import ServiceManagement
 
@@ -29,10 +30,50 @@ func memory() -> Memory {
 
 func pressureColor(_ p: Int32) -> NSColor? { p >= 4 ? .systemRed : p >= 2 ? .systemOrange : nil }
 
+// MARK: - CPU & GPU
+
+struct Ticks: Equatable { var user: UInt32 = 0, system: UInt32 = 0, idle: UInt32 = 0, nice: UInt32 = 0 }
+struct CPU: Equatable { var used = 0.0, user = 0.0, system = 0.0 }
+
+func cpuTicks() -> Ticks {
+    var s = host_cpu_load_info()
+    var n = mach_msg_type_number_t(MemoryLayout<host_cpu_load_info>.size / MemoryLayout<integer_t>.size)
+    _ = withUnsafeMutablePointer(to: &s) { $0.withMemoryRebound(to: integer_t.self, capacity: Int(n)) { host_statistics(host, HOST_CPU_LOAD_INFO, $0, &n) } }
+    return Ticks(user: s.cpu_ticks.0, system: s.cpu_ticks.1, idle: s.cpu_ticks.2, nice: s.cpu_ticks.3)
+}
+
+func cpuDelta(_ prev: Ticks, _ now: Ticks) -> CPU {
+    let user = Double(now.user &- prev.user) + Double(now.nice &- prev.nice)
+    let sys = Double(now.system &- prev.system), total = user + sys + Double(now.idle &- prev.idle)
+    return total > 0 ? CPU(used: (user + sys) / total, user: user / total, system: sys / total) : CPU()
+}
+
+func gpu() -> Double {
+    var iter: io_iterator_t = 0
+    guard IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching("IOAccelerator"), &iter) == KERN_SUCCESS else { return 0 }
+    defer { IOObjectRelease(iter) }
+    var best = 0.0, entry = IOIteratorNext(iter)
+    while entry != 0 {
+        defer { IOObjectRelease(entry); entry = IOIteratorNext(iter) }
+        if let s = IORegistryEntryCreateCFProperty(entry, "PerformanceStatistics" as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() as? [String: Any],
+           let n = (s["Device Utilization %"] ?? s["GPU Activity(%)"]) as? NSNumber {
+            best = max(best, min(max(n.doubleValue / 100, 0), 1))
+        }
+    }
+    return best
+}
+
+let timebase: mach_timebase_info_data_t = { var t = mach_timebase_info_data_t(); mach_timebase_info(&t); return t }()
+
+func machNanoseconds(_ ticks: UInt64) -> UInt64 {
+    let d = UInt64(max(timebase.denom, 1)), n = UInt64(timebase.numer)
+    return (ticks / d) * n + (ticks % d) * n / d
+}
+
 // MARK: - Processes
 
-struct Proc { var pid: pid_t, path: String, bytes: Int64 }
-struct Group { var name: String, owner: pid_t?, bytes: Int64 = 0, members: [Proc] = [] }  // owner: set when not an app bundle
+struct Proc { var pid: pid_t, path: String, bytes: Int64, cpuTime: UInt64 = 0 }
+struct Group { var name: String, owner: pid_t?, bytes: Int64 = 0, cpu = 0.0, members: [Proc] = [] }  // owner: set when not an app bundle
 
 func myProcesses() -> [Proc] {
     var pids = [pid_t](repeating: 0, count: 8192)
@@ -40,9 +81,19 @@ func myProcesses() -> [Proc] {
     return pids.prefix(Int(max(n, 0))).compactMap { pid in
         var ri = rusage_info_v4()
         let ok = withUnsafeMutablePointer(to: &ri) { $0.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(pid, RUSAGE_INFO_V4, $0) } } == 0
-        // phys_footprint is Activity Monitor's "Memory" column
-        return ok && pid > 0 ? Proc(pid: pid, path: path(of: pid), bytes: Int64(ri.ri_phys_footprint)) : nil
+        // phys_footprint is Activity Monitor's "Memory" column; user + system time share mach_absolute_time's units
+        return ok && pid > 0 ? Proc(pid: pid, path: path(of: pid), bytes: Int64(ri.ri_phys_footprint), cpuTime: ri.ri_user_time &+ ri.ri_system_time) : nil
     }
+}
+
+/// Per-process CPU fraction (1.0 = one full core) between two Mach-time snapshots.
+func cpuRates(_ procs: [Proc], since prev: [pid_t: UInt64], elapsed: UInt64) -> [pid_t: Double] {
+    guard elapsed > 0 else { return [:] }
+    var out: [pid_t: Double] = [:]
+    for p in procs {
+        if let t0 = prev[p.pid], p.cpuTime >= t0 { out[p.pid] = Double(p.cpuTime - t0) / Double(elapsed) }
+    }
+    return out
 }
 
 func path(of pid: pid_t) -> String {
@@ -102,7 +153,7 @@ let responsible = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "responsibility
     .map { unsafeBitCast($0, to: (@convention(c) (pid_t) -> pid_t).self) }
 
 /// One row per app: helpers live inside the app bundle, XPC services count toward the client they run for, everything else stands alone.
-func groups(_ procs: [Proc], owner: (pid_t) -> pid_t?) -> [Group] {
+func groups(_ procs: [Proc], cpu: [pid_t: Double] = [:], owner: (pid_t) -> pid_t?) -> [Group] {
     let paths = Dictionary(procs.map { ($0.pid, $0.path) }) { a, _ in a }
     var out: [String: Group] = [:]
     for p in procs {
@@ -112,6 +163,7 @@ func groups(_ procs: [Proc], owner: (pid_t) -> pid_t?) -> [Group] {
         let key = bundle ?? "\(who.pid)"
         out[key, default: Group(name: ((bundle ?? who.path) as NSString).lastPathComponent, owner: bundle == nil ? who.pid : nil)].members.append(p)
         out[key]!.bytes += p.bytes
+        out[key]!.cpu += cpu[p.pid, default: 0]
     }
     return out.values.sorted { $0.bytes > $1.bytes }
 }
@@ -277,10 +329,32 @@ func bytes(_ n: Int64, _ style: ByteCountFormatter.CountStyle = .file) -> String
     return String(format: v < 10 && unit > 0 ? "%.1f %@" : "%.0f %@", v, ["B", "KB", "MB", "GB", "TB"][unit])
 }
 
-/// Menu bar icon: memory and disk as two level bars. Template (tinted by macOS) unless one is alerting.
+func pct(_ v: Double) -> String { "\(Int((v * 100).rounded()))%" }
+
+/// Share of the whole machine, same scale as the CPU total: tenths below 10%, whole numbers at 10% and up.
+func cpuPct(_ share: Double) -> String {
+    let p = share * 100
+    return p >= 10 ? String(format: "%.0f%%", p) : String(format: "%.1f%%", p)
+}
+
+enum Bar: String, CaseIterable {
+    case memory = "Memory", storage = "Storage", cpu = "CPU", gpu = "GPU"
+    static let key = "menuBar"
+    static func normalize(_ raw: [String]?) -> [Bar] {
+        guard let raw else { return [.memory, .storage] }
+        let set = Set(raw.compactMap(Bar.init(rawValue:)))
+        return set.isEmpty ? [.memory, .storage] : allCases.filter(set.contains)
+    }
+    static var active: [Bar] {
+        get { normalize(UserDefaults.standard.stringArray(forKey: key)) }
+        set { UserDefaults.standard.set(normalize(newValue.map(\.rawValue)).map(\.rawValue), forKey: key) }
+    }
+}
+
+/// Menu bar icon: one level bar per enabled resource (memory and disk by default). Template unless one is alerting.
 func gauge(_ levels: [(Double, NSColor?)]) -> NSImage {
     let alert = levels.contains { $0.1 != nil }
-    let img = NSImage(size: NSSize(width: 13, height: 16), flipped: false) { _ in
+    let img = NSImage(size: NSSize(width: CGFloat(max(levels.count, 1)) * 7 - 1, height: 16), flipped: false) { _ in
         for (i, (level, color)) in levels.enumerated() {
             let ink = color ?? (alert ? .labelColor : .black)
             let track = NSRect(x: 1 + CGFloat(i) * 7, y: 2, width: 4.5, height: 12)
@@ -298,7 +372,7 @@ func gauge(_ levels: [(Double, NSColor?)]) -> NSImage {
 // MARK: - App
 
 struct AppRow: Identifiable {
-    let id: String, name: String, bytes: Int64, detail: String
+    let id: String, name: String, value: String, detail: String
     let quit: ((_ force: Bool) -> Void)?  // nil: part of macOS, never offered
     let icon: NSImage?
     var open: (() -> Void)? = nil  // nil: no app to switch to (command line tools, background processes)
@@ -316,38 +390,41 @@ func switchTo(_ app: NSRunningApplication) {
 
 /// Dock apps quit gracefully (they can still ask to save); third-party background processes get SIGTERM; macOS's own get nothing.
 /// Anything still running 10 s after Quit gets force quit (see `stop`).
-func appRows(limit: Int) -> [AppRow] {
-    let apps = Dictionary(NSWorkspace.shared.runningApplications.map { ($0.processIdentifier, $0) }) { a, _ in a }
-    return groups(myProcesses(), owner: { responsible?($0) }).prefix(limit).map { g in
-        let app = g.members.compactMap { apps[$0.pid] }.filter { $0.activationPolicy != .prohibited }
-            .min { $0.activationPolicy.rawValue < $1.activationPolicy.rawValue }  // the Dock app over its menu-bar helpers
-        let pids = g.members.filter { !isSystem($0.path) }.map(\.pid)
-        let safe = (app.map { $0.activationPolicy == .regular && !protected.contains($0.bundleIdentifier ?? "") } ?? false) || !pids.isEmpty
-        let args = g.owner.map(arguments) ?? []  // argv[0] names it "claude", not its versioned binary "2.1.310"
-        let name = display(args.first.map { ($0 as NSString).lastPathComponent } ?? g.name)
-        let dock = app?.activationPolicy == .regular ? app : nil
-        let detail = g.owner.map { args.joined(separator: " ") + "\nin " + (cwd($0) as NSString).abbreviatingWithTildeInPath }
-            ?? ("\(g.members.count) processes" + (dock == nil ? "" : " · click to switch to it"))
-        let quit: (Bool) -> Void = { force in
-            guard force else { return stop(app, pids) }
-            if let app { app.forceTerminate() } else { pids.forEach { kill($0, SIGKILL) } }
-        }
-        return AppRow(id: g.owner.map { "\($0)" } ?? g.name, name: name, bytes: g.bytes,
-                      detail: safe ? detail : "Part of macOS, so gauge won’t quit it", quit: safe ? quit : nil, icon: app?.icon,
-                      open: dock.map { a in { switchTo(a) } })
+func makeRow(_ g: Group, value: String, apps: [pid_t: NSRunningApplication]) -> AppRow {
+    let app = g.members.compactMap { apps[$0.pid] }.filter { $0.activationPolicy != .prohibited }
+        .min { $0.activationPolicy.rawValue < $1.activationPolicy.rawValue }  // the Dock app over its menu-bar helpers
+    let pids = g.members.filter { !isSystem($0.path) }.map(\.pid)
+    let safe = (app.map { $0.activationPolicy == .regular && !protected.contains($0.bundleIdentifier ?? "") } ?? false) || !pids.isEmpty
+    let args = g.owner.map(arguments) ?? []  // argv[0] names it "claude", not its versioned binary "2.1.310"
+    let name = display(args.first.map { ($0 as NSString).lastPathComponent } ?? g.name)
+    let dock = app?.activationPolicy == .regular ? app : nil
+    let detail = g.owner.map { args.joined(separator: " ") + "\nin " + (cwd($0) as NSString).abbreviatingWithTildeInPath }
+        ?? ("\(g.members.count) processes" + (dock == nil ? "" : " · click to switch to it"))
+    let quit: (Bool) -> Void = { force in
+        guard force else { return stop(app, pids) }
+        if let app { app.forceTerminate() } else { pids.forEach { kill($0, SIGKILL) } }
     }
+    return AppRow(id: g.owner.map { "\($0)" } ?? g.name, name: name, value: value,
+                  detail: safe ? detail : "Part of macOS, so gauge won’t quit it", quit: safe ? quit : nil, icon: app?.icon,
+                  open: dock.map { a in { switchTo(a) } })
 }
 
 final class Model: ObservableObject {
     @Published var mem = memory()
+    @Published var cpu = CPU()
+    @Published var gpuUsed = 0.0
     @Published var space = disk()
     @Published var rows: [AppRow] = []
+    @Published var cpuRows: [AppRow] = []
     @Published var quitting: Set<String> = []  // row ids that read "Quitting…"
     @Published var big: [Big] = []
     @Published var tree: Tree?
     @Published var scannedAt: Date?
     @Published var scanStart: Date?
     @Published var fullDiskAccess = hasFullDiskAccess()
+    var prevCPU: (at: ContinuousClock.Instant, ticks: Ticks)?
+    var prevProcs: (at: UInt64, times: [pid_t: UInt64])?
+    var rates: [pid_t: Double] = [:]
     let cache = URL.cachesDirectory.appending(path: "dev.vaze.Gauge/scan.txt")
     var trashPath: String { dataRoot + NSHomeDirectory() + "/.Trash" }
 
@@ -376,7 +453,38 @@ final class Model: ObservableObject {
         }
     }
 
-    func refresh() { mem = memory(); rows = appRows(limit: 8) }
+    @discardableResult func sampleCPU() -> Bool {
+        let now = cpuTicks(), t = ContinuousClock.now
+        guard let prev = prevCPU else { prevCPU = (t, now); return true }
+        if t - prev.at < .milliseconds(150) { return false }
+        let warm = t - prev.at < .seconds(10)
+        if warm { cpu = cpuDelta(prev.ticks, now) }
+        prevCPU = (t, now)
+        return !warm
+    }
+
+    @discardableResult func refresh(limit: Int = 8) -> Bool {
+        mem = memory()
+        gpuUsed = gpu()
+        let coldCPU = sampleCPU()
+        let procs = myProcesses(), now = mach_absolute_time()
+        var coldProcs = false
+        if let prev = prevProcs, now >= prev.at {
+            let ns = machNanoseconds(now - prev.at)
+            if ns >= 150_000_000 {
+                if ns < 10_000_000_000 { rates = cpuRates(procs, since: prev.times, elapsed: now - prev.at) } else { rates = [:]; coldProcs = true }
+                prevProcs = (now, Dictionary(procs.map { ($0.pid, $0.cpuTime) }) { a, _ in a })
+            }
+        } else {
+            prevProcs = (now, Dictionary(procs.map { ($0.pid, $0.cpuTime) }) { a, _ in a })
+            coldProcs = true
+        }
+        let apps = Dictionary(NSWorkspace.shared.runningApplications.map { ($0.processIdentifier, $0) }) { a, _ in a }
+        let grouped = groups(procs, cpu: rates, owner: { responsible?($0) })
+        rows = grouped.prefix(limit).map { makeRow($0, value: bytes($0.bytes, .memory), apps: apps) }
+        cpuRows = grouped.sorted { ($0.cpu, $0.bytes) > ($1.cpu, $1.bytes) }.prefix(limit).map { makeRow($0, value: cpuPct($0.cpu / Double(ProcessInfo.processInfo.activeProcessorCount)), apps: apps) }
+        return coldCPU || coldProcs
+    }
 
     /// The row reads "Quitting…" until it drops out. Past the force-quit grace (see `stop`) it's either gone or the app is asking you something.
     func quit(_ row: AppRow, force: Bool) {
@@ -441,7 +549,7 @@ final class Monitor: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     let status = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     let popover = NSPopover()
     let model = Model()
-    var ticks = 0, live: Timer?, outside: Any?
+    var ticks = 0, bg: Timer?, live: Timer?, outside: Any?
 
     override init() {
         super.init()
@@ -451,8 +559,17 @@ final class Monitor: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         popover.behavior = .transient
         popover.delegate = self
         tick()
-        Timer.scheduledTimer(timeInterval: 5, target: self, selector: #selector(tick), userInfo: nil, repeats: true).tolerance = 2
+        schedule()
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(appActivated), name: NSWorkspace.didActivateApplicationNotification, object: nil)
+    }
+
+    /// Stay on the 5 s coalesced timer unless CPU or GPU is shown in the menu bar.
+    func schedule() {
+        bg?.invalidate()
+        let fast = Bar.active.contains(.cpu) || Bar.active.contains(.gpu)
+        let t = Timer.scheduledTimer(timeInterval: fast ? 2 : 5, target: self, selector: #selector(tick), userInfo: nil, repeats: true)
+        t.tolerance = fast ? 0.5 : 2
+        bg = t
     }
 
     /// Switching to another app (from a row, ⌘Tab or the Dock) closes the window.
@@ -461,19 +578,47 @@ final class Monitor: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     @objc func tick() {
-        if ticks % 12 == 0 { model.refreshDisk() }  // the purgeable-aware query costs ~16 ms; once a minute is plenty
+        let bars = Bar.active, fast = bars.contains(.cpu) || bars.contains(.gpu)
+        if ticks % (fast ? 30 : 12) == 0 { model.refreshDisk() }  // the purgeable-aware query costs ~16 ms; once a minute is plenty
         ticks += 1
         model.mem = memory()
+        if bars.contains(.cpu), model.sampleCPU() {
+            Task { try? await Task.sleep(for: .milliseconds(250)); self.tick() }
+        }
+        if bars.contains(.gpu) { model.gpuUsed = gpu() }
         let m = model.mem, s = model.space, diskUsed = 1 - Double(s.free) / Double(max(s.total, 1))
-        status.button?.image = gauge([(Double(m.used) / Double(m.total), pressureColor(m.pressure)), (diskUsed, diskUsed > 0.9 ? .systemRed : nil)])
-        status.button?.toolTip = "Memory \(bytes(m.used, .memory)) of \(bytes(m.total, .memory)) · \(bytes(s.free)) free on disk"
+        let levels: [(Double, NSColor?)] = bars.map {
+            switch $0 {
+            case .memory: (Double(m.used) / Double(max(m.total, 1)), pressureColor(m.pressure))
+            case .storage: (diskUsed, diskUsed > 0.9 ? .systemRed : nil)
+            case .cpu: (model.cpu.used, model.cpu.used > 0.9 ? .systemOrange : nil)
+            case .gpu: (model.gpuUsed, model.gpuUsed > 0.9 ? .systemOrange : nil)
+            }
+        }
+        status.button?.image = gauge(levels)
+        var tip = ["Memory \(bytes(m.used, .memory)) of \(bytes(m.total, .memory))", "\(bytes(s.free)) free on disk"]
+        if bars.contains(.cpu) { tip.append("CPU \(pct(model.cpu.used))") }
+        if bars.contains(.gpu) { tip.append("GPU \(pct(model.gpuUsed))") }
+        status.button?.toolTip = tip.joined(separator: " · ")
     }
 
     @objc func toggle() {
         if NSApp.currentEvent?.type == .rightMouseUp {
             popover.performClose(nil)
             let menu = NSMenu()
-            for (title, action) in [("Open gauge", #selector(showDashboard)), ("Activity Monitor", #selector(openActivityMonitor)),
+            let open = menu.addItem(withTitle: "Open gauge", action: #selector(showDashboard), keyEquivalent: "")
+            open.target = self
+            let barsMenu = NSMenu(), active = Bar.active
+            for bar in Bar.allCases {
+                let item = barsMenu.addItem(withTitle: bar.rawValue, action: #selector(toggleBar(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = bar.rawValue
+                item.state = active.contains(bar) ? .on : .off
+                item.isEnabled = !(active.count == 1 && active.contains(bar))
+            }
+            let barsItem = menu.addItem(withTitle: "Menu Bar", action: nil, keyEquivalent: "")
+            barsItem.submenu = barsMenu
+            for (title, action) in [("Activity Monitor", #selector(openActivityMonitor)),
                                     ("Storage Settings", #selector(openStorageSettings)), ("Open at Login", #selector(toggleLogin))] {
                 let item = menu.addItem(withTitle: title, action: action, keyEquivalent: "")
                 item.target = self
@@ -488,6 +633,16 @@ final class Monitor: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         } else {
             popover.isShown ? popover.performClose(nil) : show()
         }
+    }
+
+    @objc func toggleBar(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String, let bar = Bar(rawValue: raw) else { return }
+        var bars = Bar.active
+        if let i = bars.firstIndex(of: bar) { bars.remove(at: i) } else { bars.append(bar) }
+        Bar.active = bars
+        ticks = 1  // skip re-querying disk just for toggling a bar
+        schedule()
+        tick()
     }
 
     @objc func showDashboard() { show() }
@@ -505,7 +660,7 @@ final class Monitor: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     func show() {
         guard let button = status.button else { return }
-        model.refresh()
+        let cold = model.refresh()
         model.refreshDisk()
         model.rebuild()  // drop anything deleted since, e.g. from Finder
         let host = NSHostingController(rootView: Dashboard(model: model))
@@ -514,6 +669,9 @@ final class Monitor: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         popover.appearance = NSApp.effectiveAppearance  // your Light/Dark setting, not the wallpaper-tinted menu bar's
         if #available(macOS 14, *) { NSApp.activate() } else { NSApp.activate(ignoringOtherApps: true) }
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        if cold {
+            Task { try? await Task.sleep(for: .milliseconds(250)); if self.popover.isShown { self.model.refresh() } }
+        }
         live = Timer.scheduledTimer(timeInterval: 2, target: self, selector: #selector(refresh), userInfo: nil, repeats: true)
         // .transient only closes on outside clicks while gauge is the active app, which macOS doesn't always grant a menu bar app.
         // A global monitor sees clicks in every other app and on the desktop (mouse monitors need no permission).

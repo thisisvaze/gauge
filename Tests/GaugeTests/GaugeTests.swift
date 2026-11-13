@@ -106,3 +106,31 @@ import Testing
     #expect(display("com.docker.backend") == "com.docker.backend")
     #expect(display("python3.12") == "python3.12")
 }
+
+@Test func `CPU ticks diff cleanly across wraparound and zero intervals`() {
+    #expect(cpuDelta(Ticks(user: 10, system: 5, idle: 85, nice: 0), Ticks(user: 10, system: 5, idle: 85, nice: 0)) == CPU())
+    let c = cpuDelta(Ticks(user: .max - 9, system: 100, idle: 200, nice: 0), Ticks(user: 10, system: 110, idle: 260, nice: 10))
+    #expect(abs(c.user - 0.3) < 1e-9 && abs(c.system - 0.1) < 1e-9 && abs(c.used - 0.4) < 1e-9)
+}
+
+@Test func `per-process CPU rolls up across helpers and XPC services`() {
+    let procs = [
+        Proc(pid: 1, path: "/Applications/Safari.app/Contents/MacOS/Safari", bytes: 100, cpuTime: 300),
+        Proc(pid: 2, path: "/System/Library/Frameworks/WebKit.framework/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent", bytes: 50, cpuTime: 900),
+        Proc(pid: 3, path: "/opt/homebrew/bin/node", bytes: 20, cpuTime: 50),  // reused PID (< prev): ignored
+    ]
+    let rates = cpuRates(procs, since: [1: 100, 2: 100, 3: 500], elapsed: 1_000)
+    let g = groups(procs, cpu: rates, owner: { [2: 1][$0] })
+    #expect(g.first?.name == "Safari")
+    #expect(abs((g.first?.cpu ?? 0) - 1.0) < 1e-9)
+    #expect(g.last?.cpu == 0)
+    #expect(cpuPct(0.034) == "3.4%" && cpuPct(0.124) == "12%")
+}
+
+@Test func `menu bar defaults to memory and storage, preserves order, and scales width`() {
+    #expect(Bar.normalize(nil) == [.memory, .storage])
+    #expect(Bar.normalize([]) == [.memory, .storage])
+    #expect(Bar.normalize(["GPU", "Memory", "CPU"]) == [.memory, .cpu, .gpu])
+    #expect(gauge([(0.5, nil), (0.5, nil)]).size.width == 13)
+    #expect(gauge([(0.5, nil), (0.5, nil), (0.5, nil), (0.5, nil)]).size.width == 27)
+}

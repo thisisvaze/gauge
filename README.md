@@ -11,7 +11,7 @@ A small macOS menu bar app that shows how much memory and disk you're using, and
   </picture>
 </p>
 
-The icon is two bars - memory on the left, disk on the right. Memory turns orange or red when macOS reports memory pressure, disk turns red once it's over 90% full.
+The icon is two bars by default - memory on the left, disk on the right. Memory turns orange or red when macOS reports memory pressure, disk turns red once it's over 90% full. Right-click the icon to also show CPU and GPU bars in the menu bar.
 
 ## Memory
 
@@ -27,7 +27,12 @@ The icon is two bars - memory on the left, disk on the right. Memory turns orang
 - The biggest apps, files and folders (500 MB and up) in Applications and your home folder, with when you last opened them
 - Show in Finder or Move to Trash, and empty the Trash from there
 
-Right-click the icon for Activity Monitor, Storage Settings, Open at Login and Quit.
+## CPU & GPU
+
+- Total CPU used across your cores, split into user and system, plus current GPU utilization
+- Your top apps and command line tools by CPU, with the same click-to-switch and Quit actions
+
+Right-click the icon for Menu Bar bars, Activity Monitor, Storage Settings, Open at Login and Quit.
 
 ## How light it is
 
