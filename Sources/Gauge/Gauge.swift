@@ -262,7 +262,10 @@ func staleVersions(_ folders: [String]) -> [String] {
 }
 
 struct Big: Identifiable {
-    enum Kind: String, CaseIterable { case app = "Apps", file = "Files", folder = "Folders" }
+    enum Kind: String, CaseIterable {
+        case app = "Apps", file = "Files", folder = "Folders"
+        var icon: String { switch self { case .app: "square.grid.2x2" case .file: "doc" case .folder: "folder" } }
+    }
     let path: String, bytes: Int64, kind: Kind
     var date: Date? = nil, opened = false  // last opened (Spotlight) if known, else last changed
     var id: String { path }
@@ -504,7 +507,7 @@ final class Model: ObservableObject {
         return !warm
     }
 
-    @discardableResult func refresh(limit: Int = 8) -> Bool {
+    @discardableResult func refresh(limit: Int = 25) -> Bool {
         mem = memory()
         gpuUsed = gpu()
         let coldCPU = sampleCPU()

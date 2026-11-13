@@ -43,7 +43,7 @@ Measured on an M5 Pro with macOS 27.2, gauge sitting in the menu bar:
 | Memory | 54 MB |
 | CPU | 0.18% on average (0.21 s of CPU time in 2 minutes) |
 | App size | 2.2 MB (609 KB to download), Apple silicon and Intel |
-| Code | 1,181 lines of Swift, no dependencies |
+| Code | 1,194 lines of Swift, no dependencies |
 
 - Memory and per-app numbers come straight from the kernel, no `ps` or `top` running in the background
 - The icon updates every 5 seconds with a bit of slack so macOS can group the wakeups with others, and free disk space is only checked once a minute. With CPU or GPU bars in the menu bar it updates every 2 seconds instead

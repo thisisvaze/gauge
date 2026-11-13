@@ -32,6 +32,15 @@ extension View {
     }
 }
 
+/// A scrolling list that reaches into the window's 8 pt side margins, so the scroll bar sits in the margin instead of over the numbers.
+struct Rows<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        ScrollView { VStack(spacing: 0) { content }.padding(.horizontal, 8) }.padding(.horizontal, -8)
+    }
+}
+
 struct Dashboard: View {
     enum Resource: CaseIterable { case memory, storage, cpu }
     @ObservedObject var model: Model
@@ -78,7 +87,7 @@ struct Dashboard: View {
                         }
                         .font(.system(size: 11)).foregroundStyle(Palette.ink2)
                         .padding(.horizontal, 8).frame(height: 28)
-                        ForEach(model.rows) { AppRowView(row: $0, model: model) }
+                        Rows { ForEach(model.rows) { AppRowView(row: $0, model: model) } }
                     }
                 case .storage:
                     Explorer(model: model)
@@ -91,12 +100,13 @@ struct Dashboard: View {
                         }
                         .font(.system(size: 11)).foregroundStyle(Palette.ink2)
                         .padding(.horizontal, 8).frame(height: 28)
-                        ForEach(model.cpuRows) { AppRowView(row: $0, model: model) }
+                        Rows { ForEach(model.cpuRows) { AppRowView(row: $0, model: model) } }
                     }
                 }
             }
             .padding(.horizontal, 8).padding(.top, 4).padding(.bottom, 10)
-            .frame(minHeight: 354, alignment: .top)
+            // Same height on every tab; the lists scroll inside it. 384 cuts both lists mid-row (36 pt app rows, 44 pt storage rows), which shows they scroll
+            .frame(height: 384, alignment: .top)
         }
         .frame(width: 432)
         .foregroundStyle(Palette.ink)
@@ -297,16 +307,16 @@ struct Explorer: View {
     @State private var filter = "All"
 
     var body: some View {
-        let shown = model.big.filter { filter == "All" || $0.kind.rawValue == filter }.prefix(7)
+        let shown = model.big.filter { filter == "All" || $0.kind.rawValue == filter }
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 Text("Largest items").font(.system(size: 11, weight: .medium)).foregroundStyle(Palette.ink2)
                 Spacer(minLength: 4)
                 Picker("Show", selection: $filter) {
-                    Text("All items").tag("All")
-                    ForEach(Big.Kind.allCases, id: \.self) { Text($0.rawValue).tag($0.rawValue) }
+                    Label("All items", systemImage: "line.3.horizontal").help("All items").tag("All")
+                    ForEach(Big.Kind.allCases, id: \.self) { Label($0.rawValue, systemImage: $0.icon).help($0.rawValue).tag($0.rawValue) }
                 }
-                .labelsHidden().pickerStyle(.menu).controlSize(.small).frame(width: 105)
+                .labelsHidden().pickerStyle(.segmented).labelStyle(.iconOnly).controlSize(.small).fixedSize()
                 if let start = model.scanStart {
                     TimelineView(.periodic(from: start, by: 1)) { t in
                         Text("\(Int(t.date.timeIntervalSince(start)))s").font(.system(size: 10)).foregroundStyle(Palette.ink3)
@@ -320,7 +330,7 @@ struct Explorer: View {
             }
             .padding(.horizontal, 8).frame(height: 32)
             if model.scannedAt != nil {
-                ForEach(shown) { BigRow(item: $0, model: model) }
+                Rows { ForEach(shown) { BigRow(item: $0, model: model) } }
                 if shown.isEmpty { Text("Nothing over 500 MB").font(.system(size: 12)).foregroundStyle(Palette.ink3).padding(24) }
             } else if model.scanStart != nil {
                 ProgressView("Scanning storage…").controlSize(.small).frame(maxWidth: .infinity).frame(height: 200)
